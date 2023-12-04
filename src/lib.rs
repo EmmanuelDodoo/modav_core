@@ -1,5 +1,38 @@
 mod custom_csv {
-    use std::{error::Error, ffi::OsString, vec};
+    use std::{error::Error, ffi::OsString, fmt, slice::Iter};
+
+    #[derive(Debug)]
+    pub enum CSVError {
+        InvalidPrimaryKey,
+        CSVModuleError(csv::Error),
+    }
+
+    impl From<csv::Error> for CSVError {
+        fn from(value: csv::Error) -> Self {
+            CSVError::CSVModuleError(value)
+        }
+    }
+
+    impl fmt::Display for CSVError {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                CSVError::CSVModuleError(e) => e.fmt(f),
+
+                CSVError::InvalidPrimaryKey => {
+                    write!(f, "Primary Key is invalid. It might be out of range")
+                }
+            }
+        }
+    }
+
+    impl Error for CSVError {
+        fn source(&self) -> Option<&(dyn Error + 'static)> {
+            match self {
+                CSVError::CSVModuleError(e) => e.source(),
+                CSVError::InvalidPrimaryKey => None,
+            }
+        }
+    }
 
     #[derive(Debug, Clone, Default, PartialEq)]
     pub enum Data {
