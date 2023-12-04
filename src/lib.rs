@@ -23,6 +23,23 @@ mod custom_csv {
             if value.is_empty() {
                 return Data::None;
             }
+
+            if let Ok(parsed_i32) = value.parse::<i32>() {
+                return Data::Integer(parsed_i32);
+            };
+
+            if let Ok(parsed_bool) = value.parse::<bool>() {
+                return Data::Boolean(parsed_bool);
+            };
+
+            if let Ok(parsed_float) = value.parse::<f32>() {
+                return Data::Float(parsed_float);
+            }
+
+            if let Ok(parsed_num) = value.parse::<isize>() {
+                return Data::Number(parsed_num);
+            };
+
             Data::Text(value)
         }
     }
