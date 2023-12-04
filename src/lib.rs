@@ -1,5 +1,10 @@
 mod custom_csv {
-    use std::{error::Error, ffi::OsString, fmt, slice::Iter};
+    use std::{
+        error::Error,
+        ffi::OsString,
+        fmt,
+        slice::{Iter, IterMut},
+    };
 
     #[derive(Debug)]
     pub enum CSVError {
@@ -105,7 +110,7 @@ mod custom_csv {
     pub struct Row {
         id: i32,
         cells: Vec<Cell>,
-        primary: i32,
+        primary: usize,
         id_counter: i32,
     }
 
@@ -121,13 +126,22 @@ mod custom_csv {
             Cell { id, data }
         }
 
-        fn get_data(&self) -> Data {
+        pub fn get_data(&self) -> Data {
             self.data.clone()
+        }
+
+        pub fn get_data_mut(&mut self) -> &mut Data {
+            &mut self.data
+        }
+
+        /// Modifies the data in this cell
+        pub fn set_data(&mut self, new_data: Data) {
+            self.data = new_data;
         }
     }
 
     impl Row {
-        pub fn new(record: csv::StringRecord, id: i32, primary_index: i32) -> Self {
+        pub fn new(record: csv::StringRecord, id: i32, primary_index: usize) -> Self {
             let mut counter: i32 = 0;
             let cells: Vec<Cell> = {
                 let mut cells = vec![];
@@ -153,15 +167,31 @@ mod custom_csv {
             self.cells.len() > self.primary
         }
 
+        pub fn set_primary_key(&mut self, new_primary: usize) -> Result<(), CSVError> {
+            if new_primary < self.cells.len() {
+                self.primary = new_primary;
+                Ok(())
+            } else {
+                Err(CSVError::InvalidPrimaryKey)
+            }
+        }
+
+        pub fn iter_cells(&self) -> Iter<'_, Cell> {
+            self.cells.iter()
+        }
+
+        pub fn iter_cells_mut(&mut self) -> IterMut<'_, Cell> {
+            self.cells.iter_mut()
+        }
+
+        pub fn get_primary_key(&self) -> usize {
+            self.primary
+        }
     }
 
     impl Sheet {
         /// Create a new sheet given the path to a csv file
-        pub fn new(
-            path: OsString,
-            with_header: bool,
-            primary: i32,
-        ) -> Result<Self, Box<dyn Error>> {
+        pub fn new(path: OsString, with_header: bool, primary: usize) -> Result<Self, CSVError> {
             let mut counter: i32 = 0;
             let mut rdr = csv::ReaderBuilder::new()
                 .has_headers(with_header)
@@ -262,14 +292,78 @@ mod tests {
 
     #[test]
     fn test_row() {
-        let row = {
-            let sr = csv::StringRecord::from(vec!["3", "2"]);
-            Row::new(sr, 4, 1)
-        };
-
+        let row = create_row();
         assert_eq!(
-            "Row { id: 4, cells: [Cell { id: 0, data: Text(\"3\") }, Cell { id: 1, data: Text(\"2\") }], primary: 1, id_counter: 2 }",
+            "Row { id: 4, cells: [Cell { id: 0, data: Integer(3) }, Cell { id: 1, data: Integer(2) }, Cell { id: 2, data: Integer(1) }], primary: 0, id_counter: 3 }",
             format!("{:?}", row)
         )
+    }
+
+    #[test]
+    fn test_iter_cells() {
+        let row = create_row();
+
+        assert_eq!(
+            "Row { id: 4, cells: [Cell { id: 0, data: Integer(3) }, Cell { id: 1, data: Integer(2) }, Cell { id: 2, data: Integer(1) }], primary: 0, id_counter: 3 }",
+            format!("{:?}", row)
+        );
+
+        let new_cells: Vec<Cell> = row
+            .iter_cells()
+            .map(|cell| {
+                let prev = cell.get_data();
+                let new = match prev {
+                    Data::Integer(i) => Data::Integer(i + 100),
+                    _ => Data::None,
+                };
+                Cell::new(0, new)
+            })
+            .collect();
+
+        assert_eq!("[Cell { id: 0, data: Integer(103) }, Cell { id: 0, data: Integer(102) }, Cell { id: 0, data: Integer(101) }]", format!("{:?}", new_cells))
+    }
+
+    fn test_iter_cells_mut() {
+        let mut row = create_row();
+
+        assert_eq!(
+            "Row { id: 4, cells: [Cell { id: 0, data: Integer(3) }, Cell { id: 1, data: Integer(2) }, Cell { id: 2, data: Integer(1) }], primary: 0, id_counter: 3 }",
+            format!("{:?}", row)
+        );
+
+        row.iter_cells_mut().for_each(|cell| {
+            if let Data::Integer(i) = cell.get_data_mut() {
+                *i += 100;
+            };
+        });
+
+        assert_eq!("Row { id: 4, cells: [Cell { id: 0, data: Integer(103) }, Cell { id: 0, data: Integer(102) }, Cell { id: 0, data: Integer(101) }] primary: 0, id_counter: 3 }", 
+            format!("{:?}", row));
+
+        row.iter_cells_mut()
+            .for_each(|cell| cell.set_data(Data::None));
+
+        assert_eq!(
+            "Row { id: 4, cells: [Cell { id: 0, data: None }, Cell { id: 1, data: None }, Cell { id: 2, data: None }], primary: 0, id_counter: 3 }",
+            format!("{:?}", row)
+        )
+    }
+
+    #[test]
+    fn test_row_set_primary_key() {
+        let mut row = create_row();
+
+        assert_eq!(0, row.get_primary_key());
+
+        if let Err(_) = row.set_primary_key(1) {
+            panic!("Something went wrong which shouldn't")
+        };
+        assert_eq!(1, row.get_primary_key());
+
+        if let Ok(_) = row.set_primary_key(3) {
+            panic!("Something went wrong whcih shouldn't have")
+        }
+
+        assert_eq!(1, row.get_primary_key())
     }
 }
