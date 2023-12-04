@@ -205,6 +205,11 @@ mod tests {
     use std::error::Error;
     use std::ffi::OsString;
 
+    fn create_row() -> Row {
+        let sr = csv::StringRecord::from(vec!["3", "2", "1"]);
+        Row::new(sr, 4, 0)
+    }
+
     #[test]
     fn test_cell() {
         let tdata = String::from("Something");
