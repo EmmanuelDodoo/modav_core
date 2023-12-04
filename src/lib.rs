@@ -148,6 +148,11 @@ mod custom_csv {
                 id_counter: counter,
             }
         }
+
+        fn is_primary_key_valid(&self) -> bool {
+            self.cells.len() > self.primary
+        }
+
     }
 
     impl Sheet {
@@ -181,11 +186,17 @@ mod custom_csv {
                 Vec::new()
             };
 
-            Ok(Sheet {
+            let sh = Sheet {
                 rows,
                 header,
                 id_counter: counter,
-            })
+            };
+
+            if Sheet::is_primary_valid(&sh) {
+                Ok(sh)
+            } else {
+                Err(CSVError::InvalidPrimaryKey)
+            }
         }
 
         pub fn get_row_by_index(&self, index: usize) -> Option<&Row> {
@@ -194,6 +205,12 @@ mod custom_csv {
 
         pub fn get_row_by_id(&self, id: i32) -> Option<&Row> {
             self.rows.iter().find(|row| row.id == id)
+        }
+
+        fn is_primary_valid(sh: &Sheet) -> bool {
+            sh.rows
+                .iter()
+                .fold(true, |acc, curr| acc && curr.is_primary_key_valid())
         }
     }
 }
