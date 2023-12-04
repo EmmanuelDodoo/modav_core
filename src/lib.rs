@@ -117,8 +117,9 @@ mod custom_csv {
     #[derive(Debug, Clone)]
     pub struct Sheet {
         rows: Vec<Row>,
-        header: Vec<String>,
+        headers: Vec<String>,
         id_counter: i32,
+        primary_key: usize,
     }
 
     impl Cell {
@@ -163,8 +164,12 @@ mod custom_csv {
             }
         }
 
+        fn is_key_valid(&self, key: usize) -> bool {
+            self.cells.len() > key
+        }
+
         fn is_primary_key_valid(&self) -> bool {
-            self.cells.len() > self.primary
+            self.is_key_valid(self.primary)
         }
 
         pub fn set_primary_key(&mut self, new_primary: usize) -> Result<(), CSVError> {
@@ -186,6 +191,10 @@ mod custom_csv {
 
         pub fn get_primary_key(&self) -> usize {
             self.primary
+        }
+
+        pub fn get_primary_cell(&self) -> Option<&Cell> {
+            self.cells.get(self.primary)
         }
     }
 
@@ -218,8 +227,9 @@ mod custom_csv {
 
             let sh = Sheet {
                 rows,
-                header,
+                headers: header,
                 id_counter: counter,
+                primary_key: primary,
             };
 
             if Sheet::is_primary_valid(&sh) {
@@ -241,6 +251,22 @@ mod custom_csv {
             sh.rows
                 .iter()
                 .fold(true, |acc, curr| acc && curr.is_primary_key_valid())
+                && sh.headers.len() > sh.primary_key
+        }
+
+        fn set_primary_key(&mut self, new_key: usize) -> Result<(), CSVError> {
+            if self
+                .rows
+                .iter()
+                .fold(true, |acc, curr| acc && curr.is_key_valid(new_key))
+            {
+                self.primary_key = new_key;
+                self.rows
+                    .iter_mut()
+                    .for_each(|row| row.set_primary_key(new_key).unwrap());
+                return Ok(());
+            }
+            Err(CSVError::InvalidPrimaryKey)
         }
     }
 }
@@ -323,6 +349,7 @@ mod tests {
         assert_eq!("[Cell { id: 0, data: Integer(103) }, Cell { id: 0, data: Integer(102) }, Cell { id: 0, data: Integer(101) }]", format!("{:?}", new_cells))
     }
 
+    #[test]
     fn test_iter_cells_mut() {
         let mut row = create_row();
 
@@ -337,7 +364,7 @@ mod tests {
             };
         });
 
-        assert_eq!("Row { id: 4, cells: [Cell { id: 0, data: Integer(103) }, Cell { id: 0, data: Integer(102) }, Cell { id: 0, data: Integer(101) }] primary: 0, id_counter: 3 }", 
+        assert_eq!("Row { id: 4, cells: [Cell { id: 0, data: Integer(103) }, Cell { id: 1, data: Integer(102) }, Cell { id: 2, data: Integer(101) }], primary: 0, id_counter: 3 }", 
             format!("{:?}", row));
 
         row.iter_cells_mut()
@@ -365,5 +392,28 @@ mod tests {
         }
 
         assert_eq!(1, row.get_primary_key())
+    }
+
+    #[test]
+    fn test_get_primary_cell() {
+        let mut row = create_row();
+
+        let cell = row.get_primary_cell();
+
+        assert_eq!(
+            "Some(Cell { id: 0, data: Integer(3) })",
+            format!("{:?}", cell)
+        );
+
+        if let Err(_) = row.set_primary_key(2) {
+            panic!("Something which shouldn't happen, happened")
+        };
+
+        let cell = row.get_primary_cell();
+
+        assert_eq!(
+            "Some(Cell { id: 2, data: Integer(1) })",
+            format!("{:?}", cell)
+        )
     }
 }
