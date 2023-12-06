@@ -6,6 +6,8 @@ mod custom_csv {
         slice::{Iter, IterMut},
     };
 
+    use csv::Trim;
+
     #[derive(Debug)]
     pub enum CSVError {
         InvalidPrimaryKey,
@@ -200,10 +202,23 @@ mod custom_csv {
 
     impl Sheet {
         /// Create a new sheet given the path to a csv file
-        pub fn new(path: OsString, with_header: bool, primary: usize) -> Result<Self, CSVError> {
+        pub fn new(
+            path: OsString,
+            primary: usize,
+            with_header: bool,
+            trim: bool,
+        ) -> Result<Self, CSVError> {
             let mut counter: i32 = 0;
+            let trim = {
+                if trim {
+                    Trim::All
+                } else {
+                    Trim::None
+                }
+            };
             let mut rdr = csv::ReaderBuilder::new()
                 .has_headers(with_header)
+                .trim(trim)
                 .from_path(path)?;
 
             let rows: Vec<Row> = {
@@ -267,6 +282,22 @@ mod custom_csv {
                 return Ok(());
             }
             Err(CSVError::InvalidPrimaryKey)
+        }
+
+        pub fn get_primary_key(&self) -> usize {
+            self.primary_key
+        }
+
+        pub fn iter_rows(&self) -> Iter<'_, Row> {
+            self.rows.iter()
+        }
+
+        pub fn iter_rows_mut(&mut self) -> IterMut<'_, Row> {
+            self.rows.iter_mut()
+        }
+
+        pub fn get_headers(&self) -> &Vec<String> {
+            &self.headers
         }
     }
 }
