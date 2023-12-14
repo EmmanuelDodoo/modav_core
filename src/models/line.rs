@@ -59,6 +59,25 @@ impl<X, Y> LineGraph<X, Y> {
     }
 }
 
+pub mod utils {
+    use std::fmt;
+
+    #[derive(Debug, Clone)]
+    pub enum LineGraphError {
+        ScaleLengthError(String),
+    }
+
+    impl fmt::Display for LineGraphError {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                LineGraphError::ScaleLengthError(sc) => {
+                    write!(f, "The {} axis has smaller scale than expected", sc)
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod line_tests {
     use super::*;
