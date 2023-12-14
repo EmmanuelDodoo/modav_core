@@ -208,7 +208,11 @@ pub mod csv_repr {
 }
 
 pub mod utils {
-    use std::{error::Error, fmt};
+    use std::{
+        cmp::{self, Ordering},
+        error::Error,
+        fmt,
+    };
 
     #[derive(Debug)]
     pub enum CSVError {
@@ -252,6 +256,35 @@ pub mod utils {
         Boolean(bool),
         #[default]
         None,
+    }
+
+    impl cmp::PartialOrd for Data {
+        fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+            match (self, other) {
+                (Data::Text(x), Data::Text(y)) => x.partial_cmp(y),
+                (Data::Text(_), _) => Some(Ordering::Greater),
+                (Data::Number(x), Data::Number(y)) => x.partial_cmp(y),
+                (Data::Number(_), Data::Text(_)) => Some(Ordering::Less),
+                (Data::Number(_), _) => Some(Ordering::Greater),
+                (Data::Float(x), Data::Float(y)) => x.partial_cmp(y),
+                (Data::Float(_), Data::Text(_)) => Some(Ordering::Less),
+                (Data::Float(_), Data::Number(_)) => Some(Ordering::Less),
+                (Data::Float(_), _) => Some(Ordering::Greater),
+                (Data::Integer(x), Data::Integer(y)) => x.partial_cmp(y),
+                (Data::Integer(_), Data::Text(_)) => Some(Ordering::Less),
+                (Data::Integer(_), Data::Number(_)) => Some(Ordering::Less),
+                (Data::Integer(_), Data::Float(_)) => Some(Ordering::Less),
+                (Data::Integer(_), _) => Some(Ordering::Greater),
+                (Data::Boolean(x), Data::Boolean(y)) => x.partial_cmp(y),
+                (Data::Boolean(_), Data::Text(_)) => Some(Ordering::Less),
+                (Data::Boolean(_), Data::Number(_)) => Some(Ordering::Less),
+                (Data::Boolean(_), Data::Float(_)) => Some(Ordering::Less),
+                (Data::Boolean(_), Data::Integer(_)) => Some(Ordering::Less),
+                (Data::Boolean(_), _) => Some(Ordering::Greater),
+                (Data::None, Data::None) => Some(Ordering::Equal),
+                (Data::None, _) => Some(Ordering::Less),
+            }
+        }
     }
 
     impl fmt::Display for Data {
