@@ -52,6 +52,19 @@ pub mod csv_repr {
         None,
     }
 
+    impl fmt::Display for Data {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Self::Text(t) => write!(f, "{}", t),
+                Self::Integer(i) => write!(f, "{}", i),
+                Self::Float(fl) => write!(f, "{}", fl),
+                Self::Boolean(b) => write!(f, "{}", b),
+                Self::Number(n) => write!(f, "{}", n),
+                Self::None => write!(f, "<None>"),
+            }
+        }
+    }
+
     impl From<bool> for Data {
         fn from(value: bool) -> Self {
             Data::Boolean(value)
