@@ -1,119 +1,11 @@
 pub mod csv_repr {
+    use super::utils::*;
     use std::{
-        error::Error,
         ffi::OsString,
-        fmt,
         slice::{Iter, IterMut},
     };
 
     use csv::Trim;
-
-    #[derive(Debug)]
-    pub enum CSVError {
-        InvalidPrimaryKey,
-        CSVModuleError(csv::Error),
-    }
-
-    impl From<csv::Error> for CSVError {
-        fn from(value: csv::Error) -> Self {
-            CSVError::CSVModuleError(value)
-        }
-    }
-
-    impl fmt::Display for CSVError {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            match self {
-                CSVError::CSVModuleError(e) => e.fmt(f),
-
-                CSVError::InvalidPrimaryKey => {
-                    write!(f, "Primary Key is invalid. It might be out of range")
-                }
-            }
-        }
-    }
-
-    impl Error for CSVError {
-        fn source(&self) -> Option<&(dyn Error + 'static)> {
-            match self {
-                CSVError::CSVModuleError(e) => e.source(),
-                CSVError::InvalidPrimaryKey => None,
-            }
-        }
-    }
-
-    #[derive(Debug, Clone, Default, PartialEq)]
-    pub enum Data {
-        Text(String),
-        Integer(i32),
-        Float(f32),
-        Number(isize),
-        Boolean(bool),
-        #[default]
-        None,
-    }
-
-    impl fmt::Display for Data {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            match self {
-                Self::Text(t) => write!(f, "{}", t),
-                Self::Integer(i) => write!(f, "{}", i),
-                Self::Float(fl) => write!(f, "{}", fl),
-                Self::Boolean(b) => write!(f, "{}", b),
-                Self::Number(n) => write!(f, "{}", n),
-                Self::None => write!(f, "<None>"),
-            }
-        }
-    }
-
-    impl From<bool> for Data {
-        fn from(value: bool) -> Self {
-            Data::Boolean(value)
-        }
-    }
-
-    impl From<String> for Data {
-        fn from(value: String) -> Self {
-            if value.is_empty() {
-                return Data::None;
-            }
-
-            if let Ok(parsed_i32) = value.parse::<i32>() {
-                return Data::Integer(parsed_i32);
-            };
-
-            if let Ok(parsed_bool) = value.parse::<bool>() {
-                return Data::Boolean(parsed_bool);
-            };
-
-            if let Ok(parsed_float) = value.parse::<f32>() {
-                return Data::Float(parsed_float);
-            }
-
-            if let Ok(parsed_num) = value.parse::<isize>() {
-                return Data::Number(parsed_num);
-            };
-
-            Data::Text(value)
-        }
-    }
-
-    impl From<i32> for Data {
-        fn from(value: i32) -> Self {
-            Data::Integer(value)
-        }
-    }
-
-    impl From<f32> for Data {
-        fn from(value: f32) -> Self {
-            Data::Float(value)
-        }
-    }
-
-    impl From<isize> for Data {
-        fn from(value: isize) -> Self {
-            Data::Number(value)
-        }
-    }
 
     #[derive(Debug, Clone)]
     pub struct Cell {
@@ -315,12 +207,121 @@ pub mod csv_repr {
     }
 }
 
+mod utils {
+    use std::{error::Error, fmt};
+
+    #[derive(Debug)]
+    pub enum CSVError {
+        InvalidPrimaryKey,
+        CSVModuleError(csv::Error),
+    }
+
+    impl From<csv::Error> for CSVError {
+        fn from(value: csv::Error) -> Self {
+            CSVError::CSVModuleError(value)
+        }
+    }
+
+    impl fmt::Display for CSVError {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                CSVError::CSVModuleError(e) => e.fmt(f),
+
+                CSVError::InvalidPrimaryKey => {
+                    write!(f, "Primary Key is invalid. It might be out of range")
+                }
+            }
+        }
+    }
+
+    impl Error for CSVError {
+        fn source(&self) -> Option<&(dyn Error + 'static)> {
+            match self {
+                CSVError::CSVModuleError(e) => e.source(),
+                CSVError::InvalidPrimaryKey => None,
+            }
+        }
+    }
+
+    #[derive(Debug, Clone, Default, PartialEq)]
+    pub enum Data {
+        Text(String),
+        Integer(i32),
+        Float(f32),
+        Number(isize),
+        Boolean(bool),
+        #[default]
+        None,
+    }
+
+    impl fmt::Display for Data {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Self::Text(t) => write!(f, "{}", t),
+                Self::Integer(i) => write!(f, "{}", i),
+                Self::Float(fl) => write!(f, "{}", fl),
+                Self::Boolean(b) => write!(f, "{}", b),
+                Self::Number(n) => write!(f, "{}", n),
+                Self::None => write!(f, "<None>"),
+            }
+        }
+    }
+
+    impl From<bool> for Data {
+        fn from(value: bool) -> Self {
+            Data::Boolean(value)
+        }
+    }
+
+    impl From<String> for Data {
+        fn from(value: String) -> Self {
+            if value.is_empty() {
+                return Data::None;
+            }
+
+            if let Ok(parsed_i32) = value.parse::<i32>() {
+                return Data::Integer(parsed_i32);
+            };
+
+            if let Ok(parsed_bool) = value.parse::<bool>() {
+                return Data::Boolean(parsed_bool);
+            };
+
+            if let Ok(parsed_float) = value.parse::<f32>() {
+                return Data::Float(parsed_float);
+            }
+
+            if let Ok(parsed_num) = value.parse::<isize>() {
+                return Data::Number(parsed_num);
+            };
+
+            Data::Text(value)
+        }
+    }
+
+    impl From<i32> for Data {
+        fn from(value: i32) -> Self {
+            Data::Integer(value)
+        }
+    }
+
+    impl From<f32> for Data {
+        fn from(value: f32) -> Self {
+            Data::Float(value)
+        }
+    }
+
+    impl From<isize> for Data {
+        fn from(value: isize) -> Self {
+            Data::Number(value)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::csv_repr::*;
-    use super::*;
-    use std::error::Error;
-    use std::ffi::OsString;
+    use super::utils::*;
 
     fn create_row() -> Row {
         let sr = csv::StringRecord::from(vec!["3", "2", "1"]);
