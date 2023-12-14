@@ -207,7 +207,7 @@ pub mod csv_repr {
     }
 }
 
-mod utils {
+pub mod utils {
     use std::{error::Error, fmt};
 
     #[derive(Debug)]
