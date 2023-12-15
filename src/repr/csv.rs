@@ -454,6 +454,15 @@ pub mod utils {
             }
         }
     }
+
+    impl default::Default for ColumnHeader {
+        fn default() -> Self {
+            Self {
+                label: "".into(),
+                kind: ColumnType::None,
+            }
+        }
+    }
 }
 
 #[cfg(test)]
