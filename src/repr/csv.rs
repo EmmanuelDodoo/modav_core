@@ -428,6 +428,32 @@ pub mod utils {
             }
         }
     }
+
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct ColumnHeader {
+        label: String,
+        kind: ColumnType,
+    }
+
+    impl ColumnHeader {
+        pub fn new(label: String, kind: ColumnType) -> Self {
+            Self { label, kind }
+        }
+
+        pub fn set_label(&mut self, label: String) {
+            self.label = label;
+        }
+
+        /// Returns true if data is equivalent to this column type.
+        /// For flexibility reasons, ColumnType::None always returns true
+        pub fn crosscheck_data(&self, data: Data) -> bool {
+            let conv: ColumnType = data.into();
+            match self.kind {
+                ColumnType::None => true,
+                _ => conv == self.kind,
+            }
+        }
+    }
 }
 
 #[cfg(test)]
