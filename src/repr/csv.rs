@@ -264,6 +264,7 @@ pub mod csv_repr {
 pub mod utils {
     use std::{
         cmp::{self, Ordering},
+        default,
         error::Error,
         fmt,
     };
@@ -401,6 +402,30 @@ pub mod utils {
     impl From<isize> for Data {
         fn from(value: isize) -> Self {
             Data::Number(value)
+        }
+    }
+
+    #[derive(Debug, Clone, Default, PartialEq)]
+    pub enum ColumnType {
+        Text,
+        Integer,
+        Number,
+        Float,
+        Bool,
+        #[default]
+        None,
+    }
+
+    impl From<Data> for ColumnType {
+        fn from(value: Data) -> Self {
+            match value {
+                Data::Text(_) => Self::Text,
+                Data::Float(_) => Self::Float,
+                Data::Number(_) => Self::Number,
+                Data::Integer(_) => Self::Integer,
+                Data::Boolean(_) => Self::Bool,
+                Data::None => Self::None,
+            }
         }
     }
 }
