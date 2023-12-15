@@ -29,6 +29,60 @@ pub mod csv_repr {
         primary_key: usize,
     }
 
+    #[derive(Debug, Clone, PartialEq)]
+    pub struct SheetBuilder {
+        path: OsString,
+        primary: usize,
+        with_header: bool,
+        trim: bool,
+    }
+
+    impl SheetBuilder {
+        pub fn new(path: OsString) -> Self {
+            Self {
+                path,
+                primary: 0,
+                with_header: false,
+                trim: false,
+            }
+        }
+
+        pub fn primary(self, primary: usize) -> Self {
+            let path = self.path.clone();
+            let with_header = self.with_header.clone();
+            let trim = self.trim.clone();
+
+            Self {
+                path,
+                with_header,
+                primary,
+                trim,
+            }
+        }
+
+        pub fn header(self, header: bool) -> Self {
+            Self {
+                path: self.path.clone(),
+                with_header: header,
+                trim: self.trim,
+                primary: self.primary,
+            }
+        }
+
+        pub fn trim(self, trim: bool) -> Self {
+            Self {
+                path: self.path.clone(),
+                with_header: self.with_header,
+                trim,
+                primary: self.primary,
+            }
+        }
+
+        pub fn build(self) -> Result<Sheet, CSVError> {
+            Sheet::new(self.path, self.primary, self.with_header, self.trim)
+        }
+    }
+
     impl Cell {
         pub fn new(id: i32, data: Data) -> Self {
             Cell { id, data }
@@ -353,6 +407,8 @@ pub mod utils {
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::OsString;
+
     use super::csv_repr::*;
     use super::utils::*;
 
@@ -493,5 +549,20 @@ mod tests {
             "Some(Cell { id: 2, data: Integer(1) })",
             format!("{:?}", cell)
         )
+    }
+
+    #[test]
+    fn test_sheet_builder() {
+        let path: OsString = "./dummies/csv/air.csv".into();
+        let res = SheetBuilder::new(path)
+            .header(true)
+            .trim(true)
+            .primary(0)
+            .build();
+
+        match res {
+            Ok(sht) => {}
+            Err(e) => panic!("{}", e),
+        }
     }
 }
