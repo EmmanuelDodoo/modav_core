@@ -113,8 +113,14 @@ pub mod csv_repr {
             self.cells.len() > key
         }
 
-        fn is_primary_key_valid(&self) -> bool {
-            self.is_key_valid(self.primary)
+        pub fn is_primary_key_valid(&self) -> Result<(), CSVError> {
+            if !self.is_key_valid(self.primary) {
+                return Err(CSVError::InvalidPrimaryKey(format!(
+                    "Primary key is invalid for row with id: {}",
+                    self.id
+                )));
+            };
+            Ok(())
         }
 
         pub fn set_primary_key(&mut self, new_primary: usize) -> Result<(), CSVError> {
@@ -238,13 +244,9 @@ pub mod csv_repr {
                 primary_key: primary,
             };
 
-            if Sheet::is_primary_valid(&sh) {
-                Ok(sh)
-            } else {
-                Err(CSVError::InvalidPrimaryKey(
-                    "It might be out of range".into(),
-                ))
-            }
+            sh.validate()?;
+
+            Ok(sh)
         }
 
         pub fn get_row_by_index(&self, index: usize) -> Option<&Row> {
@@ -255,11 +257,30 @@ pub mod csv_repr {
             self.rows.iter().find(|row| row.id == id)
         }
 
-        fn is_primary_valid(sh: &Sheet) -> bool {
+        /// Could be expensive
+        pub fn validate(&self) -> Result<(), CSVError> {
+            // Validating could be expensive
+            Self::is_primary_valid(self)?;
+            Self::is_cols_valid(self)?;
+
+            Ok(())
+        }
+
+        /// Checks if the type for each column cell is as expected
+        fn is_cols_valid(sh: &Sheet) -> Result<(), CSVError> {
+            Ok(())
+        }
+
+        fn is_primary_valid(sh: &Sheet) -> Result<(), CSVError> {
+            if sh.headers.len() <= sh.primary_key {
+                return Err(CSVError::InvalidPrimaryKey(
+                    "Primary key out of column range".into(),
+                ));
+            }
+
             sh.rows
                 .iter()
-                .fold(true, |acc, curr| acc && curr.is_primary_key_valid())
-                && sh.headers.len() > sh.primary_key
+                .fold(Ok(()), |acc, curr| curr.is_primary_key_valid())
         }
 
         fn set_primary_key(&mut self, new_key: usize) -> Result<(), CSVError> {
