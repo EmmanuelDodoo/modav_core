@@ -33,8 +33,8 @@ pub mod csv_repr {
     pub struct SheetBuilder {
         path: OsString,
         primary: usize,
-        with_header: bool,
         trim: bool,
+        header_strategy: HeaderStrategy,
     }
 
     impl SheetBuilder {
@@ -42,49 +42,28 @@ pub mod csv_repr {
             Self {
                 path,
                 primary: 0,
-                with_header: false,
                 trim: false,
+                header_strategy: HeaderStrategy::NoHeaders,
             }
         }
 
         pub fn primary(self, primary: usize) -> Self {
-            let path = self.path.clone();
-            let with_header = self.with_header.clone();
-            let trim = self.trim.clone();
-
-            Self {
-                path,
-                with_header,
-                primary,
-                trim,
-            }
-        }
-
-        pub fn header(self, header: bool) -> Self {
-            Self {
-                path: self.path.clone(),
-                with_header: header,
-                trim: self.trim,
-                primary: self.primary,
-            }
+            Self { primary, ..self }
         }
 
         pub fn trim(self, trim: bool) -> Self {
+            Self { trim, ..self }
+        }
+
+        pub fn header_strategy(self, strategy: HeaderStrategy) -> Self {
             Self {
-                path: self.path.clone(),
-                with_header: self.with_header,
-                trim,
-                primary: self.primary,
+                header_strategy: strategy,
+                ..self
             }
         }
 
         pub fn build(self) -> Result<Sheet, CSVError> {
-            Sheet::new(
-                self.path,
-                self.primary,
-                self.trim,
-                HeaderStrategy::NoHeaders,
-            )
+            Sheet::new(self.path, self.primary, self.trim, self.header_strategy)
         }
     }
 
@@ -673,15 +652,97 @@ mod tests {
     #[test]
     fn test_sheet_builder() {
         let path: OsString = "./dummies/csv/air.csv".into();
-        let res = SheetBuilder::new(path)
-            .header(true)
+        let path2: OsString = "./dummies/csv/air2.csv".into();
+
+        let ct = vec![
+            ColumnType::Text,
+            ColumnType::Integer,
+            ColumnType::Integer,
+            ColumnType::Integer,
+        ];
+
+        let res = SheetBuilder::new(path.clone())
+            .trim(true)
+            .primary(0)
+            .header_strategy(HeaderStrategy::ReadLabels(ct))
+            .build();
+
+        match res {
+            Ok(sht) => {
+                let hrs = sht.get_headers();
+                match hrs.get(0) {
+                    None => panic!("No headers when there should have been some"),
+                    Some(hr) => {
+                        assert_eq!(
+                            "ColumnHeader { label: \"Month\", kind: Text }",
+                            format!("{:?}", hr)
+                        )
+                    }
+                }
+
+                match hrs.get(2) {
+                    None => panic!("Missing third header"),
+                    Some(hr) => assert_eq!(
+                        "ColumnHeader { label: \"1959\", kind: Integer }",
+                        format!("{:?}", hr)
+                    ),
+                }
+            }
+            Err(e) => panic!("{}", e),
+        };
+
+        let res = SheetBuilder::new(path.clone())
             .trim(true)
             .primary(0)
             .build();
 
         match res {
-            Ok(sht) => {}
             Err(e) => panic!("{}", e),
+            Ok(sht) => match sht.get_headers().get(1) {
+                None => panic!("No second header found"),
+                Some(hr) => assert_eq!(
+                    "ColumnHeader { label: \"\", kind: None }",
+                    format!("{:?}", hr)
+                ),
+            },
+        }
+
+        let lbl = vec!["Month", "1958", "1959"];
+        let ct = vec![ColumnType::Text, ColumnType::Integer, ColumnType::Integer];
+        let chs: Vec<ColumnHeader> = lbl
+            .into_iter()
+            .zip(ct.into_iter())
+            .map(|(lb, ty)| ColumnHeader::new(lb.into(), ty))
+            .collect();
+
+        let res = SheetBuilder::new(path2)
+            .trim(true)
+            .header_strategy(HeaderStrategy::Provided(chs))
+            .build();
+
+        match res {
+            Err(e) => panic!("{}", e),
+            Ok(sht) => {
+                match sht.get_headers().get(0) {
+                    None => panic!("No Header when there should be one"),
+                    Some(hr) => {
+                        assert_eq!(
+                            "ColumnHeader { label: \"Month\", kind: Text }",
+                            format!("{:?}", hr)
+                        )
+                    }
+                };
+
+                match sht.get_headers().get(3) {
+                    None => panic!("Missing padded header"),
+                    Some(hr) => {
+                        assert_eq!(
+                            "ColumnHeader { label: \"\", kind: None }",
+                            format!("{:?}", hr)
+                        )
+                    }
+                };
+            }
         }
     }
 }
