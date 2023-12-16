@@ -122,7 +122,9 @@ pub mod csv_repr {
                 self.primary = new_primary;
                 Ok(())
             } else {
-                Err(CSVError::InvalidPrimaryKey)
+                Err(CSVError::InvalidPrimaryKey(
+                    "Tried to set primary key to invalid value".into(),
+                ))
             }
         }
 
@@ -239,7 +241,9 @@ pub mod csv_repr {
             if Sheet::is_primary_valid(&sh) {
                 Ok(sh)
             } else {
-                Err(CSVError::InvalidPrimaryKey)
+                Err(CSVError::InvalidPrimaryKey(
+                    "It might be out of range".into(),
+                ))
             }
         }
 
@@ -270,7 +274,9 @@ pub mod csv_repr {
                     .for_each(|row| row.set_primary_key(new_key).unwrap());
                 return Ok(());
             }
-            Err(CSVError::InvalidPrimaryKey)
+            Err(CSVError::InvalidPrimaryKey(
+                "Tried setting primary key to invalid value".into(),
+            ))
         }
 
         pub fn get_primary_key(&self) -> usize {
@@ -301,7 +307,7 @@ pub mod utils {
 
     #[derive(Debug)]
     pub enum CSVError {
-        InvalidPrimaryKey,
+        InvalidPrimaryKey(String),
         CSVModuleError(csv::Error),
     }
 
@@ -316,8 +322,8 @@ pub mod utils {
             match self {
                 CSVError::CSVModuleError(e) => e.fmt(f),
 
-                CSVError::InvalidPrimaryKey => {
-                    write!(f, "Primary Key is invalid. It might be out of range")
+                CSVError::InvalidPrimaryKey(s) => {
+                    write!(f, "Primary Key is invalid. {} .", s)
                 }
             }
         }
@@ -327,7 +333,7 @@ pub mod utils {
         fn source(&self) -> Option<&(dyn Error + 'static)> {
             match self {
                 CSVError::CSVModuleError(e) => e.source(),
-                CSVError::InvalidPrimaryKey => None,
+                CSVError::InvalidPrimaryKey(_) => None,
             }
         }
     }
