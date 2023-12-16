@@ -9,23 +9,23 @@ pub mod csv_repr {
 
     #[derive(Debug, Clone)]
     pub struct Cell {
-        id: i32,
+        id: usize,
         data: Data,
     }
 
     #[derive(Debug, Clone)]
     pub struct Row {
-        id: i32,
+        id: usize,
         cells: Vec<Cell>,
         primary: usize,
-        id_counter: i32,
+        id_counter: usize,
     }
 
     #[derive(Debug, Clone)]
     pub struct Sheet {
         rows: Vec<Row>,
-        headers: Vec<String>,
-        id_counter: i32,
+        headers: Vec<ColumnHeader>,
+        id_counter: usize,
         primary_key: usize,
     }
 
@@ -79,12 +79,17 @@ pub mod csv_repr {
         }
 
         pub fn build(self) -> Result<Sheet, CSVError> {
-            Sheet::new(self.path, self.primary, self.with_header, self.trim)
+            Sheet::new(
+                self.path,
+                self.primary,
+                self.trim,
+                HeaderStrategy::NoHeaders,
+            )
         }
     }
 
     impl Cell {
-        pub fn new(id: i32, data: Data) -> Self {
+        pub fn new(id: usize, data: Data) -> Self {
             Cell { id, data }
         }
 
@@ -103,8 +108,8 @@ pub mod csv_repr {
     }
 
     impl Row {
-        pub fn new(record: csv::StringRecord, id: i32, primary_index: usize) -> Self {
-            let mut counter: i32 = 0;
+        pub fn new(record: csv::StringRecord, id: usize, primary_index: usize) -> Self {
+            let mut counter: usize = 0;
             let cells: Vec<Cell> = {
                 let mut cells = vec![];
 
@@ -160,14 +165,41 @@ pub mod csv_repr {
     }
 
     impl Sheet {
+        /// Returns a new T vector with length equal to given length
+        /// A default T is used as padding. Any extras are trimmed
+        fn balance_vector<T: Clone + Default>(lst: Vec<T>, size: usize) -> Vec<T> {
+            let len = lst.len();
+            if len == size {
+                return lst;
+            } else if len < size {
+                let mut cln = lst.clone();
+                let mut pad = vec![T::default(); size - len];
+
+                cln.append(&mut pad);
+
+                return cln;
+            } else {
+                let mut cln = lst.clone();
+                cln.truncate(size);
+                return cln;
+            }
+        }
+
         /// Create a new sheet given the path to a csv file
-        pub fn new(
+        fn new(
             path: OsString,
             primary: usize,
-            with_header: bool,
             trim: bool,
+            strategy: HeaderStrategy,
         ) -> Result<Self, CSVError> {
-            let mut counter: i32 = 0;
+            let mut counter: usize = 0;
+            let mut longest_row = 0;
+
+            let has_headers = match strategy {
+                HeaderStrategy::ReadLabels(_) => true,
+                _ => false,
+            };
+
             let trim = {
                 if trim {
                     Trim::All
@@ -176,7 +208,7 @@ pub mod csv_repr {
                 }
             };
             let mut rdr = csv::ReaderBuilder::new()
-                .has_headers(with_header)
+                .has_headers(has_headers)
                 .trim(trim)
                 .from_path(path)?;
 
@@ -186,22 +218,41 @@ pub mod csv_repr {
                 for record in rdr.records() {
                     let record = record?;
                     let row = Row::new(record, counter, primary);
+                    if row.id_counter > longest_row {
+                        longest_row = row.id_counter;
+                    }
                     rows.push(row);
                     counter += 1;
                 }
                 rows
             };
 
-            let header: Vec<String> = if with_header {
-                let hr = rdr.headers()?.clone();
-                hr.iter().map(|x| x.to_string()).collect()
-            } else {
-                Vec::new()
+            let headers = match strategy {
+                HeaderStrategy::Provided(ch) => Sheet::balance_vector(ch, longest_row),
+                HeaderStrategy::NoHeaders => {
+                    Sheet::balance_vector(Vec::<ColumnHeader>::new(), longest_row)
+                }
+                HeaderStrategy::ReadLabels(ct) => {
+                    let labels: Vec<String> = rdr
+                        .headers()?
+                        .clone()
+                        .into_iter()
+                        .map(|curr| curr.to_string())
+                        .collect();
+                    let labels = Sheet::balance_vector(labels, longest_row);
+                    let ct = Sheet::balance_vector(ct, longest_row);
+
+                    labels
+                        .into_iter()
+                        .zip(ct.into_iter())
+                        .map(|(l, ct)| ColumnHeader::new(l, ct))
+                        .collect()
+                }
             };
 
             let sh = Sheet {
                 rows,
-                headers: header,
+                headers,
                 id_counter: counter,
                 primary_key: primary,
             };
@@ -217,7 +268,7 @@ pub mod csv_repr {
             self.rows.get(index)
         }
 
-        pub fn get_row_by_id(&self, id: i32) -> Option<&Row> {
+        pub fn get_row_by_id(&self, id: usize) -> Option<&Row> {
             self.rows.iter().find(|row| row.id == id)
         }
 
@@ -255,7 +306,7 @@ pub mod csv_repr {
             self.rows.iter_mut()
         }
 
-        pub fn get_headers(&self) -> &Vec<String> {
+        pub fn get_headers(&self) -> &Vec<ColumnHeader> {
             &self.headers
         }
     }
@@ -462,6 +513,14 @@ pub mod utils {
                 kind: ColumnType::None,
             }
         }
+    }
+
+    #[derive(Debug, Clone, PartialEq, Default)]
+    pub enum HeaderStrategy {
+        #[default]
+        NoHeaders,
+        ReadLabels(Vec<ColumnType>),
+        Provided(Vec<ColumnHeader>),
     }
 }
 
