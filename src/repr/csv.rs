@@ -84,6 +84,17 @@ pub mod csv_repr {
         pub fn set_data(&mut self, new_data: Data) {
             self.data = new_data;
         }
+
+        fn validate_type(&self, kind: &ColumnType) -> Result<(), CSVError> {
+            if kind.crosscheck_data(self.data.clone()) {
+                return Ok(());
+            } else {
+                Err(CSVError::InvalidColumnType(format!(
+                    "Expected {:?} type but had {:?} type for cell with id: {}",
+                    kind, self.data, self.id
+                )))
+            }
+        }
     }
 
     impl Row {
@@ -121,6 +132,50 @@ pub mod csv_repr {
                 )));
             };
             Ok(())
+        }
+
+        fn validate_all_cols(&self, headers: &Vec<ColumnHeader>) -> Result<(), CSVError> {
+            if self.cells.len() != headers.len() {
+                return Err(CSVError::InvalidColumnLength(format!(
+                    "Row with id, {}, has unbalanced cells.",
+                    self.id
+                )));
+            }
+
+            self.iter_cells()
+                .enumerate()
+                .fold(Ok(()), |acc, curr| match acc {
+                    Err(e) => Err(e),
+                    Ok(()) => {
+                        let header = headers.get(curr.0).unwrap();
+                        if header.crosscheck_data(curr.1.clone().data) {
+                            return Ok(());
+                        } else {
+                            return Err(CSVError::InvalidColumnType(
+                                    format!("Expected {:?} type but had {:?} type for cell id: {}, in row id: {}. ",
+                                        header.kind, curr.1.data, curr.1.id, self.id )))
+                        }
+                    }
+                })
+        }
+
+        fn validate_col(&self, header: &ColumnHeader, col: usize) -> Result<(), CSVError> {
+            let cell = self.cells.get(col);
+            match cell {
+                None => Err(CSVError::InvalidColumnLength(
+                    "Tried to validate out of bounds column".into(),
+                )),
+                Some(cl) => {
+                    if header.crosscheck_data(cl.data.clone()) {
+                        Ok(())
+                    } else {
+                        Err(CSVError::InvalidColumnType(format!(
+                            "Expected cell of {:?} type, but had {:?} type in cell id {} in row id {}",
+                            header.kind, cl.data, cl.id, self.id
+                        )))
+                    }
+                }
+            }
         }
 
         pub fn set_primary_key(&mut self, new_primary: usize) -> Result<(), CSVError> {
@@ -261,14 +316,32 @@ pub mod csv_repr {
         pub fn validate(&self) -> Result<(), CSVError> {
             // Validating could be expensive
             Self::is_primary_valid(self)?;
-            Self::is_cols_valid(self)?;
+            Self::validate_all_cols(self)?;
 
             Ok(())
         }
 
         /// Checks if the type for each column cell is as expected
-        fn is_cols_valid(sh: &Sheet) -> Result<(), CSVError> {
-            Ok(())
+        fn validate_all_cols(sh: &Sheet) -> Result<(), CSVError> {
+            let hrs = &sh.headers;
+            sh.iter_rows().fold(Ok(()), |acc, curr| match acc {
+                Err(e) => Err(e),
+                Ok(()) => curr.validate_all_cols(hrs),
+            })
+        }
+
+        pub fn validate_col(&self, col: usize) -> Result<(), CSVError> {
+            let hdr = self
+                .headers
+                .get(col)
+                .ok_or(CSVError::InvalidColumnLength(format!(
+                    "Tried to access out of range column"
+                )))?;
+
+            self.iter_rows().fold(Ok(()), |acc, curr| match acc {
+                Err(e) => Err(e),
+                Ok(()) => curr.validate_col(hdr, col),
+            })
         }
 
         fn is_primary_valid(sh: &Sheet) -> Result<(), CSVError> {
@@ -278,9 +351,10 @@ pub mod csv_repr {
                 ));
             }
 
-            sh.rows
-                .iter()
-                .fold(Ok(()), |acc, curr| curr.is_primary_key_valid())
+            sh.rows.iter().fold(Ok(()), |acc, curr| match acc {
+                Err(e) => Err(e),
+                Ok(()) => curr.is_primary_key_valid(),
+            })
         }
 
         fn set_primary_key(&mut self, new_key: usize) -> Result<(), CSVError> {
@@ -330,6 +404,8 @@ pub mod utils {
     pub enum CSVError {
         InvalidPrimaryKey(String),
         CSVModuleError(csv::Error),
+        InvalidColumnType(String),
+        InvalidColumnLength(String),
     }
 
     impl From<csv::Error> for CSVError {
@@ -342,10 +418,13 @@ pub mod utils {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
                 CSVError::CSVModuleError(e) => e.fmt(f),
-
-                CSVError::InvalidPrimaryKey(s) => {
-                    write!(f, "Primary Key is invalid. {} .", s)
+                CSVError::InvalidColumnLength(s) => {
+                    write!(f, "Invalid Column Length: {}", s)
                 }
+                CSVError::InvalidPrimaryKey(s) => {
+                    write!(f, "Primary Key is invalid. {}", s)
+                }
+                CSVError::InvalidColumnType(s) => write!(f, "Invalid Column type: {}", s),
             }
         }
     }
@@ -354,7 +433,9 @@ pub mod utils {
         fn source(&self) -> Option<&(dyn Error + 'static)> {
             match self {
                 CSVError::CSVModuleError(e) => e.source(),
+                CSVError::InvalidColumnLength(_) => None,
                 CSVError::InvalidPrimaryKey(_) => None,
+                CSVError::InvalidColumnType(_) => None,
             }
         }
     }
@@ -473,6 +554,18 @@ pub mod utils {
         None,
     }
 
+    impl ColumnType {
+        /// Returns true if data is equivalent to this column type.
+        /// For flexibility reasons, ColumnType::None always returns true
+        pub fn crosscheck_data(&self, data: Data) -> bool {
+            let conv: ColumnType = data.into();
+            match self {
+                ColumnType::None => true,
+                _ => &conv == self,
+            }
+        }
+    }
+
     impl From<Data> for ColumnType {
         fn from(value: Data) -> Self {
             match value {
@@ -488,8 +581,8 @@ pub mod utils {
 
     #[derive(Debug, Clone, PartialEq)]
     pub struct ColumnHeader {
-        label: String,
-        kind: ColumnType,
+        pub label: String,
+        pub kind: ColumnType,
     }
 
     impl ColumnHeader {
@@ -771,5 +864,48 @@ mod tests {
                 };
             }
         }
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_col_validation() {
+        let path1: OsString = "./dummies/csv/invalid1.csv".into();
+
+        let ct = vec![
+            ColumnType::Text,
+            ColumnType::Integer,
+            ColumnType::Integer,
+            ColumnType::Integer,
+        ];
+
+        let res = SheetBuilder::new(path1)
+            .trim(true)
+            .header_strategy(HeaderStrategy::ReadLabels(ct))
+            .build();
+
+        match res {
+            Err(e) => panic!("{}", e),
+            Ok(_) => (),
+        }
+    }
+
+    #[test]
+    fn test_col_validation2() {
+        let path: OsString = "./dummies/csv/invalid2.csv".into();
+
+        let ct = vec![
+            ColumnType::Text,
+            ColumnType::Integer,
+            ColumnType::None,
+            ColumnType::Integer,
+        ];
+
+        if let Err(e) = SheetBuilder::new(path)
+            .trim(true)
+            .header_strategy(HeaderStrategy::ReadLabels(ct))
+            .build()
+        {
+            panic!("{}", e)
+        };
     }
 }
