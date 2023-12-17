@@ -35,6 +35,7 @@ pub mod csv_repr {
         primary: usize,
         trim: bool,
         header_strategy: HeaderStrategy,
+        flexible: bool,
     }
 
     impl SheetBuilder {
@@ -44,6 +45,7 @@ pub mod csv_repr {
                 primary: 0,
                 trim: false,
                 header_strategy: HeaderStrategy::NoHeaders,
+                flexible: false,
             }
         }
 
@@ -55,6 +57,10 @@ pub mod csv_repr {
             Self { trim, ..self }
         }
 
+        pub fn flexible(self, flexible: bool) -> Self {
+            Self { flexible, ..self }
+        }
+
         pub fn header_strategy(self, strategy: HeaderStrategy) -> Self {
             Self {
                 header_strategy: strategy,
@@ -63,7 +69,13 @@ pub mod csv_repr {
         }
 
         pub fn build(self) -> Result<Sheet, CSVError> {
-            Sheet::new(self.path, self.primary, self.trim, self.header_strategy)
+            Sheet::new(
+                self.path,
+                self.primary,
+                self.header_strategy,
+                self.trim,
+                self.flexible,
+            )
         }
     }
 
@@ -204,6 +216,21 @@ pub mod csv_repr {
         pub fn get_primary_cell(&self) -> Option<&Cell> {
             self.cells.get(self.primary)
         }
+
+        /// Fill the row with empty cells up to a given length
+        fn balance_cells(&mut self, len: usize) {
+            let ln = self.cells.len();
+
+            if ln >= len {
+                return;
+            }
+
+            for _ in 0..(len - ln) {
+                let empty = Cell::new(self.id_counter, Data::None);
+                self.cells.push(empty);
+                self.id_counter += 1;
+            }
+        }
     }
 
     impl Sheet {
@@ -231,8 +258,9 @@ pub mod csv_repr {
         fn new(
             path: OsString,
             primary: usize,
-            trim: bool,
             strategy: HeaderStrategy,
+            trim: bool,
+            flexible: bool,
         ) -> Result<Self, CSVError> {
             let mut counter: usize = 0;
             let mut longest_row = 0;
@@ -252,9 +280,10 @@ pub mod csv_repr {
             let mut rdr = csv::ReaderBuilder::new()
                 .has_headers(has_headers)
                 .trim(trim)
+                .flexible(flexible)
                 .from_path(path)?;
 
-            let rows: Vec<Row> = {
+            let mut rows: Vec<Row> = {
                 let mut rows = vec![];
 
                 for record in rdr.records() {
@@ -268,6 +297,11 @@ pub mod csv_repr {
                 }
                 rows
             };
+
+            if flexible {
+                rows.iter_mut()
+                    .for_each(|row| row.balance_cells(longest_row));
+            }
 
             let headers = match strategy {
                 HeaderStrategy::Provided(ch) => Sheet::balance_vector(ch, longest_row),
@@ -927,7 +961,7 @@ mod tests {
     }
 
     #[test]
-    fn testing() {
+    fn testing_empty_field() {
         let path: OsString = "./dummies/csv/address.csv".into();
 
         let res = SheetBuilder::new(path)
@@ -938,8 +972,27 @@ mod tests {
         match res {
             Err(e) => panic!("{}", e),
             Ok(sht) => sht.iter_rows().for_each(|row| {
-                println!("{:?}", row);
-                println!("")
+                // println!("{:?}", row);
+                // println!("")
+            }),
+        }
+    }
+
+    #[test]
+    fn testing_flexible() {
+        let path: OsString = "./dummies/csv/flexible.csv".into();
+
+        let res = SheetBuilder::new(path)
+            .trim(true)
+            .header_strategy(HeaderStrategy::NoHeaders)
+            .flexible(true)
+            .build();
+
+        match res {
+            Err(e) => panic!("{}", e),
+            Ok(sh) => sh.iter_rows().for_each(|row| {
+                // println!("{:?}", row);
+                // println!("")
             }),
         }
     }
