@@ -385,6 +385,7 @@ pub mod csv_repr {
             self.rows.iter()
         }
 
+        /// Should probably call Sheet::validate after using this function
         pub fn iter_rows_mut(&mut self) -> IterMut<'_, Row> {
             self.rows.iter_mut()
         }
@@ -922,6 +923,24 @@ mod tests {
             .build()
         {
             panic!("{}", e)
+        }
+    }
+
+    #[test]
+    fn testing() {
+        let path: OsString = "./dummies/csv/address.csv".into();
+
+        let res = SheetBuilder::new(path)
+            .header_strategy(HeaderStrategy::NoHeaders)
+            .trim(true)
+            .build();
+
+        match res {
+            Err(e) => panic!("{}", e),
+            Ok(sht) => sht.iter_rows().for_each(|row| {
+                println!("{:?}", row);
+                println!("")
+            }),
         }
     }
 }
