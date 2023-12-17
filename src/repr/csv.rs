@@ -345,7 +345,10 @@ pub mod csv_repr {
         }
 
         fn is_primary_valid(sh: &Sheet) -> Result<(), CSVError> {
-            if sh.headers.len() <= sh.primary_key {
+            let len = sh.headers.len();
+            let pk = sh.primary_key;
+
+            if (len == pk && pk != 0) || (len < pk) {
                 return Err(CSVError::InvalidPrimaryKey(
                     "Primary key out of column range".into(),
                 ));
@@ -907,5 +910,18 @@ mod tests {
         {
             panic!("{}", e)
         };
+    }
+
+    #[test]
+    fn test_empty_csv() {
+        let path: OsString = "./dummies/csv/empty.csv".into();
+
+        if let Err(e) = SheetBuilder::new(path)
+            .header_strategy(HeaderStrategy::NoHeaders)
+            .trim(true)
+            .build()
+        {
+            panic!("{}", e)
+        }
     }
 }
