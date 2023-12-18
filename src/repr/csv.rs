@@ -217,6 +217,14 @@ pub mod csv_repr {
             self.cells.get(self.primary)
         }
 
+        pub fn get_cell_by_id(&self, id: usize) -> Option<&Cell> {
+            self.cells.iter().find(|cl| cl.id == id)
+        }
+
+        pub fn get_cell_by_index(&self, index: usize) -> Option<&Cell> {
+            self.cells.get(index)
+        }
+
         /// Fill the row with empty cells up to a given length
         fn balance_cells(&mut self, len: usize) {
             let ln = self.cells.len();
@@ -427,6 +435,88 @@ pub mod csv_repr {
         pub fn get_headers(&self) -> &Vec<ColumnHeader> {
             &self.headers
         }
+
+        pub fn sort_rows(&mut self, col: usize) -> Result<(), CSVError> {
+            let ch = self
+                .headers
+                .get(col)
+                .ok_or(CSVError::InvalidColumnLength("Column out of range".into()))?;
+
+            match ch {
+                ColumnHeader {
+                    label: _,
+                    kind: ColumnType::None,
+                } => {
+                    return Err(CSVError::InvalidColumnSort(
+                        "Tried to sort by an unstructured column ".into(),
+                    ))
+                }
+                _ => {}
+            };
+
+            self.validate_col(col)?;
+
+            let asc = |x: &Row, y: &Row| {
+                let d1 = &x.cells.get(col).unwrap().data;
+                let d2 = &y.cells.get(col).unwrap().data;
+
+                match (d1, d2) {
+                    (Data::None, Data::None) => std::cmp::Ordering::Equal,
+                    (Data::Text(s1), Data::Text(s2)) => s1.cmp(s2),
+                    (Data::Float(f1), Data::Float(f2)) => f1.total_cmp(f2),
+                    (Data::Number(n1), Data::Number(n2)) => n1.cmp(n2),
+                    (Data::Integer(i1), Data::Integer(i2)) => i1.cmp(i2),
+                    (Data::Boolean(b1), Data::Boolean(b2)) => b1.cmp(b2),
+                    // Should never reach this case. Previous checks ensure that
+                    _ => std::cmp::Ordering::Equal,
+                }
+            };
+
+            self.rows.sort_by(asc);
+
+            Ok(())
+        }
+
+        pub fn sort_rows_rev(&mut self, col: usize) -> Result<(), CSVError> {
+            let ch = self
+                .headers
+                .get(col)
+                .ok_or(CSVError::InvalidColumnLength("Column out of range".into()))?;
+
+            match ch {
+                ColumnHeader {
+                    label: _,
+                    kind: ColumnType::None,
+                } => {
+                    return Err(CSVError::InvalidColumnSort(
+                        "Tried to sort by an unstructured column ".into(),
+                    ))
+                }
+                _ => {}
+            };
+
+            self.validate_col(col)?;
+
+            let desc = |x: &Row, y: &Row| {
+                let d1 = &x.cells.get(col).unwrap().data;
+                let d2 = &y.cells.get(col).unwrap().data;
+
+                match (d1, d2) {
+                    (Data::None, Data::None) => std::cmp::Ordering::Equal,
+                    (Data::Text(s1), Data::Text(s2)) => s2.cmp(s1),
+                    (Data::Float(f1), Data::Float(f2)) => f2.total_cmp(f1),
+                    (Data::Number(n1), Data::Number(n2)) => n2.cmp(n1),
+                    (Data::Integer(i1), Data::Integer(i2)) => i2.cmp(i1),
+                    (Data::Boolean(b1), Data::Boolean(b2)) => b2.cmp(b1),
+                    // Should never reach this case. Previous checks ensure that
+                    _ => std::cmp::Ordering::Equal,
+                }
+            };
+
+            self.rows.sort_by(desc);
+
+            Ok(())
+        }
     }
 }
 
@@ -444,6 +534,7 @@ pub mod utils {
         CSVModuleError(csv::Error),
         InvalidColumnType(String),
         InvalidColumnLength(String),
+        InvalidColumnSort(String),
     }
 
     impl From<csv::Error> for CSVError {
@@ -463,6 +554,7 @@ pub mod utils {
                     write!(f, "Primary Key is invalid. {}", s)
                 }
                 CSVError::InvalidColumnType(s) => write!(f, "Invalid Column type: {}", s),
+                CSVError::InvalidColumnSort(s) => write!(f, "Invalid Column Sort: {}", s),
             }
         }
     }
@@ -474,6 +566,7 @@ pub mod utils {
                 CSVError::InvalidColumnLength(_) => None,
                 CSVError::InvalidPrimaryKey(_) => None,
                 CSVError::InvalidColumnType(_) => None,
+                CSVError::InvalidColumnSort(_) => None,
             }
         }
     }
@@ -994,6 +1087,126 @@ mod tests {
                 // println!("{:?}", row);
                 // println!("")
             }),
+        }
+    }
+
+    #[test]
+    fn test_sort() {
+        let path: OsString = "./dummies/csv/air.csv".into();
+
+        let ct = vec![
+            ColumnType::Text,
+            ColumnType::Integer,
+            ColumnType::Integer,
+            ColumnType::Integer,
+        ];
+
+        let res = SheetBuilder::new(path)
+            .trim(true)
+            .header_strategy(HeaderStrategy::ReadLabels(ct))
+            .build();
+
+        match res {
+            Err(e) => panic!("{}", e),
+            Ok(mut sh) => {
+                if let Some(rw) = sh.get_row_by_index(0) {
+                    if let Some(cell) = rw.get_cell_by_index(0) {
+                        assert_eq!("Cell { id: 0, data: Text(\"JAN\") }", format!("{:?}", cell))
+                    } else {
+                        panic!("There should be an index 0 cell")
+                    }
+                } else {
+                    panic!("There should be an index 0 row")
+                };
+
+                match sh.sort_rows(1) {
+                    Err(e) => panic!("{}", e),
+                    Ok(_) => {
+                        if let Some(rw) = sh.get_row_by_index(0) {
+                            if let Some(cell) = rw.get_cell_by_index(0) {
+                                assert_eq!(
+                                    "Cell { id: 0, data: Text(\"NOV\") }",
+                                    format!("{:?}", cell)
+                                )
+                            } else {
+                                panic!("There should be an index 0 cell")
+                            }
+                        } else {
+                            panic!("There should be an index 0 row")
+                        };
+                    }
+                };
+            }
+        }
+    }
+
+    #[test]
+    fn test_sort_reversed() {
+        let path: OsString = "./dummies/csv/air.csv".into();
+
+        let ct = vec![
+            ColumnType::Text,
+            ColumnType::Integer,
+            ColumnType::Integer,
+            ColumnType::Integer,
+        ];
+
+        let res = SheetBuilder::new(path)
+            .trim(true)
+            .header_strategy(HeaderStrategy::ReadLabels(ct))
+            .build();
+
+        match res {
+            Err(e) => panic!("{}", e),
+            Ok(mut sh) => {
+                if let Some(rw) = sh.get_row_by_index(0) {
+                    if let Some(cell) = rw.get_cell_by_index(0) {
+                        assert_eq!("Cell { id: 0, data: Text(\"JAN\") }", format!("{:?}", cell))
+                    } else {
+                        panic!("There should be an index 0 cell")
+                    }
+                } else {
+                    panic!("There should be an index 0 row")
+                };
+
+                match sh.sort_rows_rev(1) {
+                    Err(e) => panic!("{}", e),
+                    Ok(_) => {
+                        if let Some(rw) = sh.get_row_by_index(0) {
+                            if let Some(cell) = rw.get_cell_by_index(0) {
+                                assert_eq!(
+                                    "Cell { id: 0, data: Text(\"AUG\") }",
+                                    format!("{:?}", cell)
+                                )
+                            } else {
+                                panic!("There should be an index 0 cell")
+                            }
+                        } else {
+                            panic!("There should be an index 0 row")
+                        };
+                    }
+                };
+            }
+        }
+    }
+
+    #[test]
+    fn test_sort_panic() {
+        let path: OsString = "./dummies/csv/air.csv".into();
+
+        let res = SheetBuilder::new(path).build();
+
+        match res {
+            Err(e) => panic!("{}", e),
+            Ok(mut sh) => match sh.sort_rows(1) {
+                Ok(_) => panic!("Test should have panicked"),
+                Err(e) => {
+                    assert_eq!(
+                        format!("{}", e),
+                        "Invalid Column Sort: Tried to sort by an unstructured column "
+                    )
+                }
+            },
         }
     }
 }
