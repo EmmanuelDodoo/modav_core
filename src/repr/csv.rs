@@ -634,6 +634,19 @@ pub mod utils {
         }
     }
 
+    impl hash::Hash for Data {
+        fn hash<H: hash::Hasher>(&self, state: &mut H) {
+            match self {
+                Data::Text(t) => t.hash(state),
+                Data::Integer(i) => i.hash(state),
+                Data::Number(n) => n.hash(state),
+                Data::Boolean(b) => b.hash(state),
+                Data::Float(f) => format!("{}", f).hash(state),
+                Data::None => "tɔlɛ".hash(state),
+            }
+        }
+    }
+
     impl fmt::Display for Data {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
