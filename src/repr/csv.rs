@@ -521,6 +521,8 @@ pub mod csv_repr {
 }
 
 pub mod utils {
+    use crate::models::line::utils::LineGraphError;
+
     use std::{
         cmp::{self, Ordering},
         default,
@@ -535,6 +537,8 @@ pub mod utils {
         InvalidColumnType(String),
         InvalidColumnLength(String),
         InvalidColumnSort(String),
+        ConversionError(String),
+        LineGraphError(LineGraphError),
     }
 
     impl From<csv::Error> for CSVError {
@@ -555,6 +559,10 @@ pub mod utils {
                 }
                 CSVError::InvalidColumnType(s) => write!(f, "Invalid Column type: {}", s),
                 CSVError::InvalidColumnSort(s) => write!(f, "Invalid Column Sort: {}", s),
+                CSVError::ConversionError(s) => {
+                    write!(f, "Line Graph Conversion Error: {}", s)
+                }
+                CSVError::LineGraphError(lg) => lg.fmt(f),
             }
         }
     }
@@ -567,6 +575,8 @@ pub mod utils {
                 CSVError::InvalidPrimaryKey(_) => None,
                 CSVError::InvalidColumnType(_) => None,
                 CSVError::InvalidColumnSort(_) => None,
+                CSVError::ConversionError(_) => None,
+                CSVError::LineGraphError(_) => None,
             }
         }
     }
