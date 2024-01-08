@@ -611,6 +611,29 @@ pub mod utils {
         }
     }
 
+    impl Eq for Data {}
+
+    impl cmp::Ord for Data {
+        fn cmp(&self, other: &Self) -> Ordering {
+            if let Some(ord) = self.partial_cmp(other) {
+                return ord;
+            } else {
+                // Special case for NaN. Should only happend when both are f32
+                match self {
+                    Data::Float(f) => {
+                        if f.is_nan() {
+                            return Ordering::Less;
+                        } else {
+                            return Ordering::Greater;
+                        }
+                    }
+
+                    _ => panic!("Partial_cmp for Data returned None. Only floats should do so"),
+                }
+            }
+        }
+    }
+
     impl fmt::Display for Data {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
