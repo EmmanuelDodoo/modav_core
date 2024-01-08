@@ -525,7 +525,7 @@ pub mod utils {
         cmp::{self, Ordering},
         default,
         error::Error,
-        fmt,
+        fmt, hash,
     };
 
     #[derive(Debug)]
