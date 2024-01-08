@@ -50,8 +50,8 @@ impl<X, Y> Line<X, Y> {
 
 impl<X, Y> LineGraph<X, Y>
 where
-    X: Eq + Copy + Hash + PartialOrd + ToString + Debug,
-    Y: Eq + Copy + Hash + PartialOrd + ToString + Debug,
+    X: Eq + Clone + Hash + PartialOrd + ToString + Debug,
+    Y: Eq + Clone + Hash + PartialOrd + ToString + Debug,
 {
     pub fn new(
         lines: Vec<Line<X, Y>>,
