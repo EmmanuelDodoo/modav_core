@@ -1,5 +1,6 @@
 pub mod csv_repr {
     use super::utils::*;
+    use crate::models::line::{utils::LineGraphError, Line, LineGraph, Point, Scale};
     use std::{
         ffi::OsString,
         slice::{Iter, IterMut},
@@ -238,6 +239,51 @@ pub mod csv_repr {
                 self.cells.push(empty);
                 self.id_counter += 1;
             }
+        }
+
+        ///  Returns a Line whose points have x values from the vector provided
+        ///  and y values as the data in each corresponding cell in this row.
+        ///
+        ///  Intended for use in creating LineGraphs.
+        ///
+        ///  Any unpaired x or y values are ignored
+        fn create_line(
+            &self,
+            label: &LineLabelStrategy,
+            x_values: &Vec<String>,
+        ) -> Line<String, Data> {
+            let points: Vec<Point<String, Data>> = match label {
+                LineLabelStrategy::FromCell(idx) => {
+                    let points = x_values
+                        .iter()
+                        .zip(self.cells.iter())
+                        .enumerate()
+                        .filter(|(id, _)| id != idx)
+                        .map(|(_, (x, cell))| Point::new(x.clone(), cell.data.clone()))
+                        .collect();
+
+                    points
+                }
+
+                _ => x_values
+                    .iter()
+                    .zip(self.cells.iter())
+                    .map(|(x, cell)| Point::new(x.clone(), cell.data.clone()))
+                    .collect(),
+            };
+
+            let lbl: Option<String> = match label {
+                LineLabelStrategy::None => None,
+                LineLabelStrategy::Provided(s) => Some(s.clone()),
+                LineLabelStrategy::FromCell(idx) => {
+                    if let Some(cell) = self.cells.get(idx.clone()) {
+                        Some(cell.data.to_string())
+                    } else {
+                        None
+                    }
+                }
+            };
+            Line::from_points(points, lbl)
         }
     }
 
@@ -516,6 +562,141 @@ pub mod csv_repr {
             self.rows.sort_by(desc);
 
             Ok(())
+        }
+
+        fn copy_col_data(&self, col: usize) -> Result<Vec<Data>, CSVError> {
+            self.validate_col(col)?;
+
+            let data: Vec<Data> = self
+                .iter_rows()
+                .map(|row| {
+                    let cl = row.get_cell_by_index(col).unwrap();
+                    cl.data.clone()
+                })
+                .collect();
+
+            Ok(data)
+        }
+
+        fn grab_header(&self, col: usize) -> Result<&ColumnHeader, CSVError> {
+            let hr = self.headers.get(col).ok_or(CSVError::InvalidColumnLength(
+                "Tried accessing an out of bounds Header".into(),
+            ))?;
+
+            match hr.kind {
+                ColumnType::None => {
+                    return Err(CSVError::ConversionError(
+                        "Cannot convert non uniform type column".into(),
+                    ))
+                }
+                _ => Ok(hr),
+            }
+        }
+
+        fn validate_to_line_graph(&self, label_strat: &LineLabelStrategy) -> Result<(), CSVError> {
+            // None type Columns
+            self.headers
+                .iter()
+                .fold(Ok(()), |acc, curr| match (acc, &curr.kind) {
+                    (Err(e), _) => return Err(e),
+                    (Ok(_), ColumnType::None) => {
+                        return Err(CSVError::ConversionError(
+                            "Cannot convert non uniform type column".into(),
+                        ));
+                    }
+                    (Ok(_), _) => Ok(()),
+                })?;
+
+            let check_uniform_type = |acc: Result<ColumnType, CSVError>, ct: ColumnType| {
+                if let Ok(acc) = acc {
+                    match (&acc, &ct) {
+                        (ColumnType::None, _) => Ok(ct),
+                        (x, y) => {
+                            if x == y {
+                                return Ok(ct);
+                            } else {
+                                return Err(CSVError::ConversionError(
+                                    "Cannot convert different column types".into(),
+                                ));
+                            }
+                        }
+                    }
+                } else {
+                    return acc;
+                }
+            };
+
+            // Uniform type columns
+            match label_strat {
+                LineLabelStrategy::FromCell(idx) => {
+                    if idx >= &self.headers.len() {
+                        return Err(CSVError::ConversionError(
+                            "Tried to assign invalid column as label".into(),
+                        ));
+                    }
+
+                    self.headers
+                        .iter()
+                        .map(|hrd| &hrd.kind)
+                        .enumerate()
+                        .filter(|(ind, _)| ind != idx)
+                        .fold(Ok(ColumnType::None), |acc, (_, ct)| {
+                            check_uniform_type(acc, ct.clone())
+                        })?;
+                }
+
+                _ => {
+                    self.headers
+                        .iter()
+                        .map(|hdr| &hdr.kind)
+                        .fold(Ok(ColumnType::None), |acc, ct| {
+                            check_uniform_type(acc, ct.clone())
+                        })?;
+                }
+            }
+
+            Ok(())
+        }
+
+        pub fn to_line_graph(
+            &self,
+            x_label: Option<String>,
+            y_label: Option<String>,
+            label_strat: LineLabelStrategy,
+        ) -> Result<LineGraph<String, Data>, CSVError> {
+            self.validate()?;
+            self.validate_to_line_graph(&label_strat)?;
+
+            let x_values: Vec<String> = {
+                let mut values: Vec<String> =
+                    self.headers.iter().map(|hdr| hdr.label.clone()).collect();
+                values.sort();
+                values.dedup();
+                values
+            };
+
+            let lines: Vec<Line<String, Data>> = self
+                .iter_rows()
+                .map(|rw| rw.create_line(&label_strat, &x_values))
+                .collect();
+
+            let y_scale: Scale<Data> = {
+                let mut values: Vec<Data> = lines
+                    .iter()
+                    .flat_map(|ln| ln.points.iter().map(|pnt| pnt.y.clone()))
+                    .collect();
+                values.sort();
+                values.dedup();
+
+                Scale::List(values)
+            };
+
+            let x_scale = Scale::List(x_values);
+
+            let lg = LineGraph::new(lines, x_label, y_label, x_scale, y_scale)
+                .map_err(CSVError::LineGraphError)?;
+
+            Ok(lg)
         }
     }
 }
@@ -798,6 +979,14 @@ pub mod utils {
         ReadLabels(Vec<ColumnType>),
         Provided(Vec<ColumnHeader>),
     }
+
+    #[derive(Debug, Clone, PartialEq, Default)]
+    pub enum LineLabelStrategy {
+        FromCell(usize),
+        Provided(String),
+        #[default]
+        None,
+    }
 }
 
 #[cfg(test)]
@@ -806,10 +995,28 @@ mod tests {
 
     use super::csv_repr::*;
     use super::utils::*;
+    use crate::models::line::*;
 
     fn create_row() -> Row {
         let sr = csv::StringRecord::from(vec!["3", "2", "1"]);
         Row::new(sr, 4, 0)
+    }
+
+    fn create_air_csv() -> Result<Sheet, CSVError> {
+        let path: OsString = "./dummies/csv/air.csv".into();
+
+        let ct = vec![
+            ColumnType::Text,
+            ColumnType::Integer,
+            ColumnType::Integer,
+            ColumnType::Integer,
+        ];
+
+        SheetBuilder::new(path.clone())
+            .trim(true)
+            .primary(0)
+            .header_strategy(HeaderStrategy::ReadLabels(ct))
+            .build()
     }
 
     #[test]
@@ -1254,5 +1461,18 @@ mod tests {
                 }
             },
         }
+    }
+
+    #[test]
+    fn test_create_line_graph() {
+        let res = create_air_csv().unwrap();
+
+        let x_label = Some(String::from("X Label"));
+        let y_label = Some(String::from("Y Label"));
+        let label_strat = LineLabelStrategy::FromCell(0);
+
+        if let Ok(lg) = res.to_line_graph(x_label, y_label, label_strat) {
+            println!("{:?}", lg);
+        };
     }
 }
