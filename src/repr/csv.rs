@@ -86,8 +86,8 @@ pub mod csv_repr {
             Cell { id, data }
         }
 
-        pub fn get_data(&self) -> Data {
-            self.data.clone()
+        pub fn get_data(&self) -> &Data {
+            &self.data
         }
 
         pub fn get_data_mut(&mut self) -> &mut Data {
