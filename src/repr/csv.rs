@@ -707,7 +707,12 @@ pub mod csv_repr {
             };
 
             let x_scale = {
-                let mut values = x_values;
+                let mut values: Vec<String> = x_values
+                    .into_iter()
+                    .enumerate()
+                    .filter(|(idx, _)| !exclude_column.contains(idx))
+                    .map(|(_, lbl)| lbl)
+                    .collect();
                 values.sort();
                 values.dedup();
                 Scale::List(values)
