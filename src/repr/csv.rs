@@ -2,6 +2,7 @@ pub mod csv_repr {
     use super::utils::*;
     use crate::models::line::{utils::LineGraphError, Line, LineGraph, Point, Scale};
     use std::{
+        collections::HashSet,
         ffi::OsString,
         slice::{Iter, IterMut},
     };
@@ -251,6 +252,7 @@ pub mod csv_repr {
             &self,
             label: &LineLabelStrategy,
             x_values: &Vec<String>,
+            exclude: &HashSet<usize>,
         ) -> Line<String, Data> {
             let points: Vec<Point<String, Data>> = match label {
                 LineLabelStrategy::FromCell(idx) => {
@@ -258,7 +260,7 @@ pub mod csv_repr {
                         .iter()
                         .zip(self.cells.iter())
                         .enumerate()
-                        .filter(|(id, _)| id != idx)
+                        .filter(|(id, _)| id != idx && !exclude.contains(id))
                         .map(|(_, (x, cell))| Point::new(x.clone(), cell.data.clone()))
                         .collect();
 
@@ -268,7 +270,9 @@ pub mod csv_repr {
                 _ => x_values
                     .iter()
                     .zip(self.cells.iter())
-                    .map(|(x, cell)| Point::new(x.clone(), cell.data.clone()))
+                    .enumerate()
+                    .filter(|(id, _)| !exclude.contains(id))
+                    .map(|(_, (x, cell))| Point::new(x.clone(), cell.data.clone()))
                     .collect(),
             };
 
@@ -658,26 +662,37 @@ pub mod csv_repr {
             Ok(())
         }
 
+        /// Returns a new line graph created from this csv struct
+        ///
+        /// exclude_row: The positions of the rows to exclude in this transformation
+        /// exclude_column: The positions of columns to exclude in the
+        /// transformation
         pub fn to_line_graph(
             &self,
             x_label: Option<String>,
             y_label: Option<String>,
             label_strat: LineLabelStrategy,
+            exclude_row: HashSet<usize>,
+            exclude_column: HashSet<usize>,
         ) -> Result<LineGraph<String, Data>, CSVError> {
             self.validate()?;
             self.validate_to_line_graph(&label_strat)?;
 
             let x_values: Vec<String> = {
-                let mut values: Vec<String> =
-                    self.headers.iter().map(|hdr| hdr.label.clone()).collect();
-                values.sort();
-                values.dedup();
+                let values: Vec<String> = self
+                    .headers
+                    .iter()
+                    .enumerate()
+                    .map(|(_, hdr)| hdr.label.clone())
+                    .collect();
                 values
             };
 
             let lines: Vec<Line<String, Data>> = self
                 .iter_rows()
-                .map(|rw| rw.create_line(&label_strat, &x_values))
+                .enumerate()
+                .filter(|(idx, _)| !exclude_row.contains(idx))
+                .map(|(_, rw)| rw.create_line(&label_strat, &x_values, &exclude_column))
                 .collect();
 
             let y_scale: Scale<Data> = {
@@ -691,7 +706,12 @@ pub mod csv_repr {
                 Scale::List(values)
             };
 
-            let x_scale = Scale::List(x_values);
+            let x_scale = {
+                let mut values = x_values;
+                values.sort();
+                values.dedup();
+                Scale::List(values)
+            };
 
             let lg = LineGraph::new(lines, x_label, y_label, x_scale, y_scale)
                 .map_err(CSVError::LineGraphError)?;
@@ -991,7 +1011,9 @@ pub mod utils {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashSet;
     use std::ffi::OsString;
+    use std::usize;
 
     use super::csv_repr::*;
     use super::utils::*;
@@ -1470,8 +1492,22 @@ mod tests {
         let x_label = Some(String::from("X Label"));
         let y_label = Some(String::from("Y Label"));
         let label_strat = LineLabelStrategy::FromCell(0);
+        let exclude_row = {
+            let mut exl: HashSet<usize> = HashSet::new();
+            exl.insert(2);
+            exl.insert(5);
+            exl
+        };
+        let exclude_column = {
+            let mut exl: HashSet<usize> = HashSet::new();
+            exl.insert(2);
+            exl.insert(1);
+            exl
+        };
 
-        if let Ok(lg) = res.to_line_graph(x_label, y_label, label_strat) {
+        if let Ok(lg) =
+            res.to_line_graph(x_label, y_label, label_strat, exclude_row, exclude_column)
+        {
             println!("{:?}", lg);
         };
     }
