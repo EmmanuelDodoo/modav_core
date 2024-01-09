@@ -926,6 +926,12 @@ pub mod utils {
         }
     }
 
+    impl From<Data> for String {
+        fn from(value: Data) -> Self {
+            value.to_string()
+        }
+    }
+
     #[derive(Debug, Clone, Default, PartialEq)]
     pub enum ColumnType {
         Text,
