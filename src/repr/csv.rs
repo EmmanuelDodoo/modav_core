@@ -1,6 +1,6 @@
 pub mod csv_repr {
     use super::utils::*;
-    use crate::models::line::{utils::LineGraphError, Line, LineGraph, Point, Scale};
+    use crate::models::line::{Line, LineGraph, Point, Scale};
     use std::{
         collections::HashSet,
         ffi::OsString,
@@ -858,7 +858,7 @@ pub mod utils {
                 Data::Number(n) => n.hash(state),
                 Data::Boolean(b) => b.hash(state),
                 Data::Float(f) => format!("{}", f).hash(state),
-                Data::None => "tɔlɛ".hash(state),
+                Data::None => "<None>".hash(state),
             }
         }
     }
@@ -1022,7 +1022,6 @@ mod tests {
 
     use super::csv_repr::*;
     use super::utils::*;
-    use crate::models::line::*;
 
     fn create_row() -> Row {
         let sr = csv::StringRecord::from(vec!["3", "2", "1"]);
