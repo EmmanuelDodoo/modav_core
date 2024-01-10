@@ -904,6 +904,9 @@ pub mod utils {
                 return Data::Number(parsed_num);
             };
 
+            if value == Data::None.to_string() {
+                return Data::None;
+            }
             Data::Text(value)
         }
     }
