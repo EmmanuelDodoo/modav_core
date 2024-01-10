@@ -908,6 +908,12 @@ pub mod utils {
         }
     }
 
+    impl From<&str> for Data {
+        fn from(value: &str) -> Self {
+            value.to_string().into()
+        }
+    }
+
     impl From<i32> for Data {
         fn from(value: i32) -> Self {
             Data::Integer(value)
