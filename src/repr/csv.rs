@@ -947,6 +947,9 @@ pub mod utils {
         /// Returns true if data is equivalent to this column type.
         /// For flexibility reasons, ColumnType::None always returns true
         pub fn crosscheck_data(&self, data: Data) -> bool {
+            if let Data::None = data {
+                return true;
+            };
             let conv: ColumnType = data.into();
             match self {
                 ColumnType::None => true,
@@ -986,6 +989,9 @@ pub mod utils {
         /// Returns true if data is equivalent to this column type.
         /// For flexibility reasons, ColumnType::None always returns true
         pub fn crosscheck_data(&self, data: Data) -> bool {
+            if let Data::None = data {
+                return true;
+            };
             let conv: ColumnType = data.into();
             match self.kind {
                 ColumnType::None => true,
