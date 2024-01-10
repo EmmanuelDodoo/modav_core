@@ -9,13 +9,13 @@ pub mod csv_repr {
 
     use csv::Trim;
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct Cell {
         id: usize,
         data: Data,
     }
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct Row {
         id: usize,
         cells: Vec<Cell>,
@@ -23,7 +23,7 @@ pub mod csv_repr {
         id_counter: usize,
     }
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, PartialEq)]
     pub struct Sheet {
         rows: Vec<Row>,
         headers: Vec<ColumnHeader>,
