@@ -603,10 +603,9 @@ pub mod csv_repr {
         ///
         /// uniform_type: Whether every non-zeroth column has the same type.
         /// types are lost if false
-        pub fn transpose(
-            self: &mut Self,
-            initial_header: Option<String>,
-        ) -> Result<Self, CSVError> {
+        pub fn transpose(self: &Self, initial_header: Option<String>) -> Result<Self, CSVError> {
+            Sheet::validate(&self)?;
+
             let width = self.headers.len();
             let depth = self.rows.len() + 1;
 
@@ -630,27 +629,21 @@ pub mod csv_repr {
                         None => hr,
                         Some(lbl) => ColumnHeader::new(lbl.clone(), hr.kind),
                     };
-                    let mut hrs = self.iter_rows_mut().try_fold(
-                        Vec::<ColumnHeader>::new(),
-                        |acc, curr| {
-                            let cln = match curr.get_cell_by_index(0) {
-                                Some(Cell {
+                    let mut hrs = self
+                        .iter_rows()
+                        .fold(Vec::<ColumnHeader>::new(), |acc, curr| {
+                            let cln = match curr.get_cell_by_index(0).unwrap() {
+                                Cell {
                                     id: _,
                                     data: Data::None,
-                                }) => String::new(),
-                                Some(Cell { id: _, data: d }) => d.to_string(),
-                                None => {
-                                    return Err(CSVError::TransposeError(
-                                        "A Row has no cells".into(),
-                                    ))
-                                }
+                                } => String::new(),
+                                Cell { id: _, data: d } => d.to_string(),
                             };
                             let hdr = ColumnHeader::new(cln, ColumnType::None);
                             let mut acc = acc;
                             acc.push(hdr);
-                            Ok(acc)
-                        },
-                    )?;
+                            acc
+                        });
                     headers.push(hr);
                     headers.append(&mut hrs);
                 } else {
@@ -1678,8 +1671,7 @@ mod tests {
         match create_air_csv() {
             Err(e) => panic!("Should'nt have errored here. {}", e),
             Ok(sht) => {
-                let mut sht = sht;
-                match Sheet::transpose(&mut sht, Some(String::from("YEAR"))) {
+                match Sheet::transpose(&sht, Some(String::from("YEAR"))) {
                     Err(e) => panic!("{}", e),
                     Ok(res) => {
                         let rw1 = res.get_row_by_index(1).unwrap();
@@ -1728,37 +1720,34 @@ mod tests {
 
         match res {
             Err(e) => panic!("Transpose flexible: {}", e),
-            Ok(sht) => {
-                let mut sht = sht;
-                match Sheet::transpose(&mut sht, Some("Year".into())) {
-                    Err(e) => panic!("{}", e),
-                    Ok(res) => {
-                        let rw0 = res.get_row_by_index(0).unwrap();
-                        assert_eq!(
-                            &Data::Integer(1958),
-                            rw0.get_cell_by_index(0).unwrap().get_data()
-                        );
-                        assert_eq!(
-                            &Data::Integer(3),
-                            rw0.get_cell_by_index(2).unwrap().get_data()
-                        );
+            Ok(sht) => match Sheet::transpose(&sht, Some("Year".into())) {
+                Err(e) => panic!("{}", e),
+                Ok(res) => {
+                    let rw0 = res.get_row_by_index(0).unwrap();
+                    assert_eq!(
+                        &Data::Integer(1958),
+                        rw0.get_cell_by_index(0).unwrap().get_data()
+                    );
+                    assert_eq!(
+                        &Data::Integer(3),
+                        rw0.get_cell_by_index(2).unwrap().get_data()
+                    );
 
-                        let rw1 = res.get_row_by_index(1).unwrap();
-                        assert_eq!(
-                            &Data::Integer(2),
-                            rw1.get_cell_by_index(1).unwrap().get_data()
-                        );
-                        assert_eq!(&Data::None, rw1.get_cell_by_index(2).unwrap().get_data());
+                    let rw1 = res.get_row_by_index(1).unwrap();
+                    assert_eq!(
+                        &Data::Integer(2),
+                        rw1.get_cell_by_index(1).unwrap().get_data()
+                    );
+                    assert_eq!(&Data::None, rw1.get_cell_by_index(2).unwrap().get_data());
 
-                        if let Some(_) = res.get_row_by_index(2) {
-                            panic!("Nothing should have been returned");
-                        }
-
-                        let hr2 = res.get_headers().get(2).unwrap();
-                        assert_eq!(ColumnType::Integer, hr2.kind);
+                    if let Some(_) = res.get_row_by_index(2) {
+                        panic!("Nothing should have been returned");
                     }
+
+                    let hr2 = res.get_headers().get(2).unwrap();
+                    assert_eq!(ColumnType::Integer, hr2.kind);
                 }
-            }
+            },
         };
     }
 
@@ -1770,26 +1759,23 @@ mod tests {
             .build()
         {
             Err(e) => panic!("{}", e),
-            Ok(sht) => {
-                let mut sht = sht;
-                match Sheet::transpose(&mut sht, None) {
-                    Err(e) => panic!("{}", e),
-                    Ok(res) => {
-                        let rw2 = res.get_row_by_index(2).unwrap();
-                        assert_eq!(&Data::None, rw2.get_cell_by_index(0).unwrap().get_data());
+            Ok(sht) => match Sheet::transpose(&sht, None) {
+                Err(e) => panic!("{}", e),
+                Ok(res) => {
+                    let rw2 = res.get_row_by_index(2).unwrap();
+                    assert_eq!(&Data::None, rw2.get_cell_by_index(0).unwrap().get_data());
 
-                        let hr0 = res.get_headers().get(0).unwrap();
-                        assert_eq!(&ColumnHeader::new(String::new(), ColumnType::None), hr0);
+                    let hr0 = res.get_headers().get(0).unwrap();
+                    assert_eq!(&ColumnHeader::new(String::new(), ColumnType::None), hr0);
 
-                        let hr2 = res.get_headers().get(2).unwrap();
-                        assert_eq!(&ColumnHeader::new("Feb".into(), ColumnType::Text), hr2);
+                    let hr2 = res.get_headers().get(2).unwrap();
+                    assert_eq!(&ColumnHeader::new("Feb".into(), ColumnType::Text), hr2);
 
-                        if let Some(_) = res.get_headers().get(3) {
-                            panic!("Shouldn't have returned anything");
-                        };
-                    }
+                    if let Some(_) = res.get_headers().get(3) {
+                        panic!("Shouldn't have returned anything");
+                    };
                 }
-            }
+            },
         }
     }
 
@@ -1810,21 +1796,15 @@ mod tests {
             .build()
         {
             Err(e) => panic!("{}", e),
-            Ok(sh) => {
-                let mut sh = sh;
-                match Sheet::transpose(&mut sh, None) {
+            Ok(sh) => match Sheet::transpose(&sh, None) {
+                Err(e) => panic!("{}", e),
+                Ok(res) => match Sheet::transpose(&res, None) {
                     Err(e) => panic!("{}", e),
-                    Ok(res) => {
-                        let mut res = res;
-                        match Sheet::transpose(&mut res, None) {
-                            Err(e) => panic!("{}", e),
-                            Ok(sh2) => {
-                                assert_eq!(sh, sh2);
-                            }
-                        }
+                    Ok(sh2) => {
+                        assert_eq!(sh, sh2);
                     }
-                }
-            }
+                },
+            },
         }
 
         let flexible: OsString = "./dummies/csv/transpose1.csv".into();
@@ -1837,36 +1817,24 @@ mod tests {
             .build()
         {
             Err(e) => panic!("{}", e),
-            Ok(sh) => {
-                let mut sh = sh;
-                match Sheet::transpose(&mut sh, None) {
+            Ok(sh) => match Sheet::transpose(&sh, None) {
+                Err(e) => panic!("{}", e),
+                Ok(res) => match Sheet::transpose(&res, None) {
                     Err(e) => panic!("{}", e),
-                    Ok(res) => {
-                        let mut res = res;
-                        match Sheet::transpose(&mut res, None) {
-                            Err(e) => panic!("{}", e),
-                            Ok(sh2) => assert_eq!(sh, sh2),
-                        }
-                    }
-                }
-            }
+                    Ok(sh2) => assert_eq!(sh, sh2),
+                },
+            },
         };
 
         match create_air_csv() {
             Err(e) => panic!("{}", e),
-            Ok(sh) => {
-                let mut sh = sh;
-                match Sheet::transpose(&mut sh, None) {
+            Ok(sh) => match Sheet::transpose(&sh, None) {
+                Err(e) => panic!("{}", e),
+                Ok(res) => match Sheet::transpose(&res, None) {
                     Err(e) => panic!("{}", e),
-                    Ok(res) => {
-                        let mut res = res;
-                        match Sheet::transpose(&mut res, None) {
-                            Err(e) => panic!("{}", e),
-                            Ok(sh2) => assert_eq!(sh, sh2),
-                        }
-                    }
-                }
-            }
+                    Ok(sh2) => assert_eq!(sh, sh2),
+                },
+            },
         };
     }
 }
