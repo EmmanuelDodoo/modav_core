@@ -568,6 +568,139 @@ pub mod csv_repr {
             Ok(())
         }
 
+        fn infer_col_kinds(sh: &mut Self, header_len: usize) {
+            let col_kinds: Vec<ColumnType> = sh
+                .iter_rows()
+                .map(|rw| {
+                    rw.iter_cells()
+                        .map(|cl| cl.get_data().clone().into())
+                        .collect::<Vec<ColumnType>>()
+                })
+                .fold(vec![None; header_len], |acc, curr| {
+                    acc.into_iter()
+                        .zip(curr)
+                        .map(|(ac, cr)| match ac {
+                            None => Some(cr),
+                            Some(ac) => match (ac, cr) {
+                                (ColumnType::None, x) => Some(x),
+                                (y, ColumnType::None) => Some(y),
+                                (ac, cr) if ac == cr => Some(ac),
+                                _ => Some(ColumnType::None),
+                            },
+                        })
+                        .collect()
+                })
+                .into_iter()
+                .map(|op| op.unwrap_or(ColumnType::default()))
+                .collect();
+
+            sh.headers.iter_mut().zip(col_kinds).for_each(|(hdr, knd)| {
+                hdr.kind = knd;
+            });
+        }
+
+        /// initial_header: The new label for the initial header, if any
+        ///
+        /// uniform_type: Whether every non-zeroth column has the same type.
+        /// types are lost if false
+        pub fn transpose(
+            self: &mut Self,
+            initial_header: Option<String>,
+        ) -> Result<Self, CSVError> {
+            let width = self.headers.len();
+            let depth = self.rows.len() + 1;
+
+            let mut headers: Vec<ColumnHeader> = Vec::new();
+            let mut rows: Vec<Vec<Cell>> = Vec::new();
+
+            for idx in 0..width {
+                let hr = match self.headers.get(idx) {
+                    Some(hdr) => {
+                        let mut h = hdr.clone();
+                        h.kind = ColumnType::Text;
+                        h
+                    }
+                    None => {
+                        return Err(CSVError::TransposeError("Sheet has missing headers".into()))
+                    }
+                };
+
+                if idx == 0 {
+                    let hr = match &initial_header {
+                        None => hr,
+                        Some(lbl) => ColumnHeader::new(lbl.clone(), hr.kind),
+                    };
+                    let mut hrs = self.iter_rows_mut().try_fold(
+                        Vec::<ColumnHeader>::new(),
+                        |acc, curr| {
+                            let cln = match curr.get_cell_by_index(0) {
+                                Some(Cell {
+                                    id: _,
+                                    data: Data::None,
+                                }) => String::new(),
+                                Some(Cell { id: _, data: d }) => d.to_string(),
+                                None => {
+                                    return Err(CSVError::TransposeError(
+                                        "A Row has no cells".into(),
+                                    ))
+                                }
+                            };
+                            let hdr = ColumnHeader::new(cln, ColumnType::None);
+                            let mut acc = acc;
+                            acc.push(hdr);
+                            Ok(acc)
+                        },
+                    )?;
+                    headers.push(hr);
+                    headers.append(&mut hrs);
+                } else {
+                    let first = Cell::new(0, hr.label.into());
+                    let mut rw = vec![first];
+                    let mut cls: Vec<Cell> = self
+                        .iter_rows()
+                        .enumerate()
+                        .map(|(id, rw)| {
+                            let id = id + 1;
+                            match rw.get_cell_by_index(idx) {
+                                Some(cl) => {
+                                    let mut cl = cl.clone();
+                                    cl.id = id;
+                                    cl
+                                }
+                                None => Cell::new(id, Data::default()),
+                            }
+                        })
+                        .collect();
+                    rw.append(&mut cls);
+                    rows.push(rw);
+                }
+            }
+
+            let rows: Vec<Row> = rows
+                .into_iter()
+                .enumerate()
+                .map(|(id, cells)| Row {
+                    cells,
+                    primary: 0,
+                    id,
+                    id_counter: depth,
+                })
+                .collect();
+
+            let mut sh = Sheet {
+                rows,
+                headers,
+                id_counter: width - 1,
+                primary_key: 0,
+            };
+
+            Self::infer_col_kinds(&mut sh, depth);
+
+            Self::validate(&sh)?;
+
+            Ok(sh)
+        }
+
         fn copy_col_data(&self, col: usize) -> Result<Vec<Data>, CSVError> {
             self.validate_col(col)?;
 
@@ -745,6 +878,7 @@ pub mod utils {
         InvalidColumnSort(String),
         ConversionError(String),
         LineGraphError(LineGraphError),
+        TransposeError(String),
     }
 
     impl From<csv::Error> for CSVError {
@@ -769,6 +903,7 @@ pub mod utils {
                     write!(f, "Line Graph Conversion Error: {}", s)
                 }
                 CSVError::LineGraphError(lg) => lg.fmt(f),
+                CSVError::TransposeError(s) => write!(f, "Transposing Error: {}", s),
             }
         }
     }
@@ -783,6 +918,7 @@ pub mod utils {
                 CSVError::InvalidColumnSort(_) => None,
                 CSVError::ConversionError(_) => None,
                 CSVError::LineGraphError(_) => None,
+                CSVError::TransposeError(_) => None,
             }
         }
     }
@@ -1534,6 +1670,203 @@ mod tests {
             res.to_line_graph(x_label, y_label, label_strat, exclude_row, exclude_column)
         {
             println!("{:?}", lg);
+        };
+    }
+
+    #[test]
+    fn test_transpose() {
+        match create_air_csv() {
+            Err(e) => panic!("Should'nt have errored here. {}", e),
+            Ok(sht) => {
+                let mut sht = sht;
+                match Sheet::transpose(&mut sht, Some(String::from("YEAR"))) {
+                    Err(e) => panic!("{}", e),
+                    Ok(res) => {
+                        let rw1 = res.get_row_by_index(1).unwrap();
+
+                        assert_eq!(
+                            "360",
+                            rw1.get_cell_by_index(1).unwrap().get_data().to_string()
+                        );
+
+                        let rw2 = res.get_row_by_index(2).unwrap();
+                        assert_eq!(
+                            "535",
+                            rw2.get_cell_by_index(6).unwrap().get_data().to_string()
+                        );
+
+                        let rw0 = res.get_row_by_index(0).unwrap();
+                        assert_eq!(
+                            &Data::Integer(1958),
+                            rw0.get_cell_by_index(0).unwrap().get_data()
+                        );
+
+                        let hr6 = res.get_headers().get(6).unwrap();
+                        assert_eq!(&ColumnHeader::new("JUN".into(), ColumnType::Integer), hr6);
+                        assert_eq!(ColumnType::Integer, hr6.kind);
+
+                        let hr0 = res.get_headers().get(0).unwrap();
+                        assert_eq!(&ColumnHeader::new("YEAR".into(), ColumnType::Integer), hr0);
+                    }
+                };
+            }
+        }
+    }
+
+    #[test]
+    fn test_transpose_flexible() {
+        let path: OsString = "./dummies/csv/transpose1.csv".into();
+
+        let ct = vec![ColumnType::Text, ColumnType::Integer, ColumnType::Integer];
+
+        let res = SheetBuilder::new(path)
+            .trim(true)
+            .header_strategy(HeaderStrategy::ReadLabels(ct))
+            .flexible(true)
+            .primary(0)
+            .build();
+
+        match res {
+            Err(e) => panic!("Transpose flexible: {}", e),
+            Ok(sht) => {
+                let mut sht = sht;
+                match Sheet::transpose(&mut sht, Some("Year".into())) {
+                    Err(e) => panic!("{}", e),
+                    Ok(res) => {
+                        let rw0 = res.get_row_by_index(0).unwrap();
+                        assert_eq!(
+                            &Data::Integer(1958),
+                            rw0.get_cell_by_index(0).unwrap().get_data()
+                        );
+                        assert_eq!(
+                            &Data::Integer(3),
+                            rw0.get_cell_by_index(2).unwrap().get_data()
+                        );
+
+                        let rw1 = res.get_row_by_index(1).unwrap();
+                        assert_eq!(
+                            &Data::Integer(2),
+                            rw1.get_cell_by_index(1).unwrap().get_data()
+                        );
+                        assert_eq!(&Data::None, rw1.get_cell_by_index(2).unwrap().get_data());
+
+                        if let Some(_) = res.get_row_by_index(2) {
+                            panic!("Nothing should have been returned");
+                        }
+
+                        let hr2 = res.get_headers().get(2).unwrap();
+                        assert_eq!(ColumnType::Integer, hr2.kind);
+                    }
+                }
+            }
+        };
+    }
+
+    #[test]
+    fn test_transpose_headless() {
+        let path: OsString = "./dummies/csv/headless.csv".into();
+        match SheetBuilder::new(path)
+            .header_strategy(HeaderStrategy::NoHeaders)
+            .build()
+        {
+            Err(e) => panic!("{}", e),
+            Ok(sht) => {
+                let mut sht = sht;
+                match Sheet::transpose(&mut sht, None) {
+                    Err(e) => panic!("{}", e),
+                    Ok(res) => {
+                        let rw2 = res.get_row_by_index(2).unwrap();
+                        assert_eq!(&Data::None, rw2.get_cell_by_index(0).unwrap().get_data());
+
+                        let hr0 = res.get_headers().get(0).unwrap();
+                        assert_eq!(&ColumnHeader::new(String::new(), ColumnType::None), hr0);
+
+                        let hr2 = res.get_headers().get(2).unwrap();
+                        assert_eq!(&ColumnHeader::new("Feb".into(), ColumnType::Text), hr2);
+
+                        if let Some(_) = res.get_headers().get(3) {
+                            panic!("Shouldn't have returned anything");
+                        };
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_transpose_symmetry() {
+        let headless: OsString = "./dummies/csv/headless.csv".into();
+
+        let ct = vec![
+            ColumnHeader::new("".into(), ColumnType::Text),
+            ColumnHeader::new("".into(), ColumnType::Integer),
+            ColumnHeader::new("".into(), ColumnType::Integer),
+            ColumnHeader::new("".into(), ColumnType::Integer),
+        ];
+
+        match SheetBuilder::new(headless)
+            .header_strategy(HeaderStrategy::Provided(ct))
+            .trim(true)
+            .build()
+        {
+            Err(e) => panic!("{}", e),
+            Ok(sh) => {
+                let mut sh = sh;
+                match Sheet::transpose(&mut sh, None) {
+                    Err(e) => panic!("{}", e),
+                    Ok(res) => {
+                        let mut res = res;
+                        match Sheet::transpose(&mut res, None) {
+                            Err(e) => panic!("{}", e),
+                            Ok(sh2) => {
+                                assert_eq!(sh, sh2);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let flexible: OsString = "./dummies/csv/transpose1.csv".into();
+        let ct = vec![ColumnType::Text, ColumnType::Integer, ColumnType::Integer];
+
+        match SheetBuilder::new(flexible)
+            .header_strategy(HeaderStrategy::ReadLabels(ct))
+            .flexible(true)
+            .trim(true)
+            .build()
+        {
+            Err(e) => panic!("{}", e),
+            Ok(sh) => {
+                let mut sh = sh;
+                match Sheet::transpose(&mut sh, None) {
+                    Err(e) => panic!("{}", e),
+                    Ok(res) => {
+                        let mut res = res;
+                        match Sheet::transpose(&mut res, None) {
+                            Err(e) => panic!("{}", e),
+                            Ok(sh2) => assert_eq!(sh, sh2),
+                        }
+                    }
+                }
+            }
+        };
+
+        match create_air_csv() {
+            Err(e) => panic!("{}", e),
+            Ok(sh) => {
+                let mut sh = sh;
+                match Sheet::transpose(&mut sh, None) {
+                    Err(e) => panic!("{}", e),
+                    Ok(res) => {
+                        let mut res = res;
+                        match Sheet::transpose(&mut res, None) {
+                            Err(e) => panic!("{}", e),
+                            Ok(sh2) => assert_eq!(sh, sh2),
+                        }
+                    }
+                }
+            }
         };
     }
 }
