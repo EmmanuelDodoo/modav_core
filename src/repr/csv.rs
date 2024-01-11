@@ -794,7 +794,7 @@ pub mod csv_repr {
         /// exclude_column: The positions of columns to exclude in the
         /// transformation
         pub fn to_line_graph(
-            &self,
+            self: &Self,
             x_label: Option<String>,
             y_label: Option<String>,
             label_strat: LineLabelStrategy,
