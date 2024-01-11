@@ -569,6 +569,7 @@ pub mod csv_repr {
         }
 
         fn infer_col_kinds(sh: &mut Self, header_len: usize) {
+            let mut is_first_iteration = true;
             let col_kinds: Vec<ColumnType> = sh
                 .iter_rows()
                 .map(|rw| {
@@ -580,9 +581,18 @@ pub mod csv_repr {
                     acc.into_iter()
                         .zip(curr)
                         .map(|(ac, cr)| match ac {
-                            None => Some(cr),
+                            None => {
+                                is_first_iteration = false;
+                                Some(cr)
+                            }
                             Some(ac) => match (ac, cr) {
-                                (ColumnType::None, x) => Some(x),
+                                (ColumnType::None, x) => {
+                                    if is_first_iteration {
+                                        Some(x)
+                                    } else {
+                                        Some(ColumnType::None)
+                                    }
+                                }
                                 (y, ColumnType::None) => Some(y),
                                 (ac, cr) if ac == cr => Some(ac),
                                 _ => Some(ColumnType::None),
