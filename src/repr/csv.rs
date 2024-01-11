@@ -581,13 +581,11 @@ pub mod csv_repr {
                     acc.into_iter()
                         .zip(curr)
                         .map(|(ac, cr)| match ac {
-                            None => {
-                                is_first_iteration = false;
-                                Some(cr)
-                            }
+                            None => Some(cr),
                             Some(ac) => match (ac, cr) {
                                 (ColumnType::None, x) => {
                                     if is_first_iteration {
+                                        is_first_iteration = false;
                                         Some(x)
                                     } else {
                                         Some(ColumnType::None)
