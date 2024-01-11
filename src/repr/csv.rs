@@ -36,8 +36,9 @@ pub mod csv_repr {
         path: OsString,
         primary: usize,
         trim: bool,
-        header_strategy: HeaderStrategy,
+        label_strategy: HeaderLabelStrategy,
         flexible: bool,
+        type_strategy: HeaderTypesStrategy,
     }
 
     impl SheetBuilder {
@@ -46,8 +47,9 @@ pub mod csv_repr {
                 path,
                 primary: 0,
                 trim: false,
-                header_strategy: HeaderStrategy::NoHeaders,
+                label_strategy: HeaderLabelStrategy::NoLabels,
                 flexible: false,
+                type_strategy: HeaderTypesStrategy::None,
             }
         }
 
@@ -63,9 +65,16 @@ pub mod csv_repr {
             Self { flexible, ..self }
         }
 
-        pub fn header_strategy(self, strategy: HeaderStrategy) -> Self {
+        pub fn types(self, strategy: HeaderTypesStrategy) -> Self {
             Self {
-                header_strategy: strategy,
+                type_strategy: strategy,
+                ..self
+            }
+        }
+
+        pub fn labels(self, strategy: HeaderLabelStrategy) -> Self {
+            Self {
+                label_strategy: strategy,
                 ..self
             }
         }
@@ -74,7 +83,8 @@ pub mod csv_repr {
             Sheet::new(
                 self.path,
                 self.primary,
-                self.header_strategy,
+                self.label_strategy,
+                self.type_strategy,
                 self.trim,
                 self.flexible,
             )
@@ -316,16 +326,18 @@ pub mod csv_repr {
         fn new(
             path: OsString,
             primary: usize,
-            strategy: HeaderStrategy,
+            label_strategy: HeaderLabelStrategy,
+            type_strategy: HeaderTypesStrategy,
             trim: bool,
             flexible: bool,
         ) -> Result<Self, CSVError> {
             let mut counter: usize = 0;
             let mut longest_row = 0;
 
-            let has_headers = match strategy {
-                HeaderStrategy::ReadLabels(_) => true,
-                _ => false,
+            let has_headers = match label_strategy {
+                HeaderLabelStrategy::ReadLabels => true,
+                HeaderLabelStrategy::NoLabels => false,
+                HeaderLabelStrategy::Provided(_) => false,
             };
 
             let trim = {
@@ -361,35 +373,55 @@ pub mod csv_repr {
                     .for_each(|row| row.balance_cells(longest_row));
             }
 
-            let headers = match strategy {
-                HeaderStrategy::Provided(ch) => Sheet::balance_vector(ch, longest_row),
-                HeaderStrategy::NoHeaders => {
-                    Sheet::balance_vector(Vec::<ColumnHeader>::new(), longest_row)
+            let types = match &type_strategy {
+                HeaderTypesStrategy::Provided(ct) => {
+                    Sheet::balance_vector(ct.to_owned(), longest_row)
                 }
-                HeaderStrategy::ReadLabels(ct) => {
+                HeaderTypesStrategy::Infer => {
+                    Sheet::balance_vector(Vec::<ColumnType>::new(), longest_row)
+                }
+                HeaderTypesStrategy::None => {
+                    Sheet::balance_vector(Vec::<ColumnType>::new(), longest_row)
+                }
+            };
+
+            let labels = match &label_strategy {
+                HeaderLabelStrategy::Provided(ch) => {
+                    Sheet::balance_vector(ch.to_owned(), longest_row)
+                }
+                HeaderLabelStrategy::NoLabels => {
+                    Sheet::balance_vector(Vec::<String>::new(), longest_row)
+                }
+                HeaderLabelStrategy::ReadLabels => {
                     let labels: Vec<String> = rdr
                         .headers()?
                         .clone()
                         .into_iter()
                         .map(|curr| curr.to_string())
                         .collect();
-                    let labels = Sheet::balance_vector(labels, longest_row);
-                    let ct = Sheet::balance_vector(ct, longest_row);
-
-                    labels
-                        .into_iter()
-                        .zip(ct.into_iter())
-                        .map(|(l, ct)| ColumnHeader::new(l, ct))
-                        .collect()
+                    Sheet::balance_vector(labels, longest_row)
                 }
             };
 
-            let sh = Sheet {
+            let headers: Vec<ColumnHeader> = labels
+                .into_iter()
+                .zip(types.into_iter())
+                .map(|(lbl, typ)| ColumnHeader::new(lbl, typ))
+                .collect();
+
+            let mut sh = Sheet {
                 rows,
                 headers,
                 id_counter: counter,
                 primary_key: primary,
             };
+
+            match type_strategy {
+                HeaderTypesStrategy::Infer => {
+                    Sheet::infer_col_kinds(&mut sh, longest_row);
+                }
+                _ => {}
+            }
 
             sh.validate()?;
 
@@ -1156,11 +1188,22 @@ pub mod utils {
     }
 
     #[derive(Debug, Clone, PartialEq, Default)]
-    pub enum HeaderStrategy {
+    pub enum HeaderLabelStrategy {
         #[default]
-        NoHeaders,
-        ReadLabels(Vec<ColumnType>),
-        Provided(Vec<ColumnHeader>),
+        NoLabels,
+        ReadLabels,
+        Provided(Vec<String>),
+    }
+
+    #[derive(Debug, Clone, PartialEq, Default)]
+    pub enum HeaderTypesStrategy {
+        /// The types are infered from the csv
+        Infer,
+        /// The types are provided as a vector
+        Provided(Vec<ColumnType>),
+        /// All columns have a None type
+        #[default]
+        None,
     }
 
     #[derive(Debug, Clone, PartialEq, Default)]
@@ -1199,7 +1242,8 @@ mod tests {
         SheetBuilder::new(path.clone())
             .trim(true)
             .primary(0)
-            .header_strategy(HeaderStrategy::ReadLabels(ct))
+            .types(HeaderTypesStrategy::Provided(ct))
+            .labels(HeaderLabelStrategy::ReadLabels)
             .build()
     }
 
@@ -1352,7 +1396,8 @@ mod tests {
         let res = SheetBuilder::new(path.clone())
             .trim(true)
             .primary(0)
-            .header_strategy(HeaderStrategy::ReadLabels(ct))
+            .labels(HeaderLabelStrategy::ReadLabels)
+            .types(HeaderTypesStrategy::Provided(ct))
             .build();
 
         match res {
@@ -1395,17 +1440,12 @@ mod tests {
             },
         }
 
-        let lbl = vec!["Month", "1958", "1959"];
-        let ct = vec![ColumnType::Text, ColumnType::Integer, ColumnType::Integer];
-        let chs: Vec<ColumnHeader> = lbl
-            .into_iter()
-            .zip(ct.into_iter())
-            .map(|(lb, ty)| ColumnHeader::new(lb.into(), ty))
-            .collect();
+        let lbl: Vec<String> = vec!["Month".into(), "1958".into(), "1959".into()];
 
         let res = SheetBuilder::new(path2)
             .trim(true)
-            .header_strategy(HeaderStrategy::Provided(chs))
+            .types(HeaderTypesStrategy::Infer)
+            .labels(HeaderLabelStrategy::Provided(lbl))
             .build();
 
         match res {
@@ -1425,7 +1465,7 @@ mod tests {
                     None => panic!("Missing padded header"),
                     Some(hr) => {
                         assert_eq!(
-                            "ColumnHeader { label: \"\", kind: None }",
+                            "ColumnHeader { label: \"\", kind: Integer }",
                             format!("{:?}", hr)
                         )
                     }
@@ -1448,7 +1488,8 @@ mod tests {
 
         let res = SheetBuilder::new(path1)
             .trim(true)
-            .header_strategy(HeaderStrategy::ReadLabels(ct))
+            .labels(HeaderLabelStrategy::ReadLabels)
+            .types(HeaderTypesStrategy::Provided(ct))
             .build();
 
         match res {
@@ -1470,7 +1511,8 @@ mod tests {
 
         if let Err(e) = SheetBuilder::new(path)
             .trim(true)
-            .header_strategy(HeaderStrategy::ReadLabels(ct))
+            .labels(HeaderLabelStrategy::ReadLabels)
+            .types(HeaderTypesStrategy::Provided(ct))
             .build()
         {
             panic!("{}", e)
@@ -1482,7 +1524,7 @@ mod tests {
         let path: OsString = "./dummies/csv/empty.csv".into();
 
         if let Err(e) = SheetBuilder::new(path)
-            .header_strategy(HeaderStrategy::NoHeaders)
+            .labels(HeaderLabelStrategy::NoLabels)
             .trim(true)
             .build()
         {
@@ -1495,7 +1537,7 @@ mod tests {
         let path: OsString = "./dummies/csv/address.csv".into();
 
         let res = SheetBuilder::new(path)
-            .header_strategy(HeaderStrategy::NoHeaders)
+            .labels(HeaderLabelStrategy::NoLabels)
             .trim(true)
             .build();
 
@@ -1514,7 +1556,7 @@ mod tests {
 
         let res = SheetBuilder::new(path)
             .trim(true)
-            .header_strategy(HeaderStrategy::NoHeaders)
+            .labels(HeaderLabelStrategy::NoLabels)
             .flexible(true)
             .build();
 
@@ -1540,7 +1582,8 @@ mod tests {
 
         let res = SheetBuilder::new(path)
             .trim(true)
-            .header_strategy(HeaderStrategy::ReadLabels(ct))
+            .labels(HeaderLabelStrategy::ReadLabels)
+            .types(HeaderTypesStrategy::Provided(ct))
             .build();
 
         match res {
@@ -1590,7 +1633,8 @@ mod tests {
 
         let res = SheetBuilder::new(path)
             .trim(true)
-            .header_strategy(HeaderStrategy::ReadLabels(ct))
+            .labels(HeaderLabelStrategy::ReadLabels)
+            .types(HeaderTypesStrategy::Provided(ct))
             .build();
 
         match res {
@@ -1721,7 +1765,8 @@ mod tests {
 
         let res = SheetBuilder::new(path)
             .trim(true)
-            .header_strategy(HeaderStrategy::ReadLabels(ct))
+            .labels(HeaderLabelStrategy::ReadLabels)
+            .types(HeaderTypesStrategy::Provided(ct))
             .flexible(true)
             .primary(0)
             .build();
@@ -1763,7 +1808,7 @@ mod tests {
     fn test_transpose_headless() {
         let path: OsString = "./dummies/csv/headless.csv".into();
         match SheetBuilder::new(path)
-            .header_strategy(HeaderStrategy::NoHeaders)
+            .labels(HeaderLabelStrategy::NoLabels)
             .build()
         {
             Err(e) => panic!("{}", e),
@@ -1791,15 +1836,11 @@ mod tests {
     fn test_transpose_symmetry() {
         let headless: OsString = "./dummies/csv/headless.csv".into();
 
-        let ct = vec![
-            ColumnHeader::new("".into(), ColumnType::Text),
-            ColumnHeader::new("".into(), ColumnType::Integer),
-            ColumnHeader::new("".into(), ColumnType::Integer),
-            ColumnHeader::new("".into(), ColumnType::Integer),
-        ];
+        let labels: Vec<String> = vec![];
 
         match SheetBuilder::new(headless)
-            .header_strategy(HeaderStrategy::Provided(ct))
+            .labels(HeaderLabelStrategy::Provided(labels))
+            .types(HeaderTypesStrategy::Infer)
             .trim(true)
             .build()
         {
@@ -1819,8 +1860,9 @@ mod tests {
         let ct = vec![ColumnType::Text, ColumnType::Integer, ColumnType::Integer];
 
         match SheetBuilder::new(flexible)
-            .header_strategy(HeaderStrategy::ReadLabels(ct))
+            .labels(HeaderLabelStrategy::ReadLabels)
             .flexible(true)
+            .types(HeaderTypesStrategy::Provided(ct))
             .trim(true)
             .build()
         {
@@ -1844,5 +1886,33 @@ mod tests {
                 },
             },
         };
+    }
+
+    #[test]
+    fn test_infer_types() {
+        let path: OsString = "./dummies/csv/infer.csv".into();
+
+        let res = SheetBuilder::new(path)
+            .labels(HeaderLabelStrategy::ReadLabels)
+            .trim(true)
+            .types(HeaderTypesStrategy::Infer)
+            .build();
+
+        match res {
+            Err(e) => panic!("{}", e),
+            Ok(sh) => {
+                let hr0 = sh.get_headers().get(0).unwrap();
+                assert_eq!(ColumnType::Text, hr0.kind);
+
+                let hr2 = sh.get_headers().get(2).unwrap();
+                assert_eq!(ColumnType::Float, hr2.kind);
+
+                let hr3 = sh.get_headers().get(3).unwrap();
+                assert_eq!(ColumnType::None, hr3.kind);
+
+                let hr5 = sh.get_headers().get(5).unwrap();
+                assert_eq!(ColumnType::Text, hr5.kind);
+            }
+        }
     }
 }
