@@ -1,6 +1,6 @@
 use crate::models::line::LineGraph;
 
-trait ToLineGraph {
+pub trait ToLineGraph {
     type X;
     type Y;
     type ErrorType;
