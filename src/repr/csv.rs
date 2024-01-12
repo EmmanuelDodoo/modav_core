@@ -834,7 +834,7 @@ pub mod csv_repr {
         /// exclude_row: The positions of the rows to exclude in this transformation
         /// exclude_column: The positions of columns to exclude in the
         /// transformation
-        pub fn to_line_graph(
+        pub fn create_line_graph(
             self: &Self,
             x_label: Option<String>,
             y_label: Option<String>,
@@ -863,26 +863,30 @@ pub mod csv_repr {
                 .collect();
 
             let y_scale: Scale<Data> = {
-                let mut values: Vec<Data> = lines
+                let values: HashSet<Data> = lines
                     .iter()
                     .flat_map(|ln| ln.points.iter().map(|pnt| pnt.y.clone()))
                     .collect();
-                values.sort();
-                values.dedup();
 
-                Scale::List(values)
+                Scale::List(values.into_iter().collect())
             };
 
             let x_scale = {
-                let mut values: Vec<String> = x_values
-                    .into_iter()
-                    .enumerate()
-                    .filter(|(idx, _)| !exclude_column.contains(idx))
-                    .map(|(_, lbl)| lbl)
-                    .collect();
-                values.sort();
-                values.dedup();
-                Scale::List(values)
+                let values: HashSet<String> = match label_strat {
+                    LineLabelStrategy::FromCell(ref id) => x_values
+                        .into_iter()
+                        .enumerate()
+                        .filter(|(idx, _)| idx != id && !exclude_column.contains(idx))
+                        .map(|(_, lbl)| lbl)
+                        .collect(),
+                    _ => x_values
+                        .into_iter()
+                        .enumerate()
+                        .filter(|(idx, _)| !exclude_column.contains(idx))
+                        .map(|(_, lbl)| lbl)
+                        .collect(),
+                };
+                Scale::List(values.into_iter().collect())
             };
 
             let lg = LineGraph::new(lines, x_label, y_label, x_scale, y_scale)
@@ -1734,7 +1738,7 @@ mod tests {
         };
 
         if let Ok(lg) =
-            res.to_line_graph(x_label, y_label, label_strat, exclude_row, exclude_column)
+            res.create_line_graph(x_label, y_label, label_strat, exclude_row, exclude_column)
         {
             println!("{:?}", lg);
         };
