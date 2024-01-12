@@ -1,6 +1,7 @@
 pub mod csv_repr {
     use super::utils::*;
     use crate::models::line::{Line, LineGraph, Point, Scale};
+    use crate::traits::line::ToLineGraph;
     use std::{
         collections::HashSet,
         ffi::OsString,
@@ -888,6 +889,27 @@ pub mod csv_repr {
                 .map_err(CSVError::LineGraphError)?;
 
             Ok(lg)
+        }
+    }
+
+    impl ToLineGraph for Sheet {
+        type X = String;
+        type Y = Data;
+        type ErrorType = CSVError;
+
+        fn to_line_graph(
+            self: &Self,
+            x_label: Option<String>,
+            y_label: Option<String>,
+        ) -> Result<LineGraph<Self::X, Self::Y>, Self::ErrorType> {
+            Sheet::create_line_graph(
+                &self,
+                x_label,
+                y_label,
+                LineLabelStrategy::None,
+                HashSet::new(),
+                HashSet::new(),
+            )
         }
     }
 }
