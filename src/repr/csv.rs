@@ -1,920 +1,916 @@
-pub mod csv_repr {
-    use super::utils::*;
-    use crate::models::line::{Line, LineGraph, Point, Scale};
-    use crate::traits::line::ToLineGraph;
-    use std::{
-        collections::HashSet,
-        ffi::OsString,
-        slice::{Iter, IterMut},
-    };
+use crate::models::line::{Line, LineGraph, Point, Scale};
+use crate::traits::line::ToLineGraph;
+use std::{
+    collections::HashSet,
+    ffi::OsString,
+    slice::{Iter, IterMut},
+};
 
-    use csv::Trim;
+use utils::*;
 
-    #[derive(Debug, Clone, PartialEq)]
-    pub struct Cell {
-        id: usize,
-        data: Data,
-    }
+use csv::Trim;
 
-    #[derive(Debug, Clone, PartialEq)]
-    pub struct Row {
-        id: usize,
-        cells: Vec<Cell>,
-        primary: usize,
-        id_counter: usize,
-    }
+#[derive(Debug, Clone, PartialEq)]
+pub struct Cell {
+    id: usize,
+    data: Data,
+}
 
-    #[derive(Debug, Clone, PartialEq)]
-    pub struct Sheet {
-        rows: Vec<Row>,
-        headers: Vec<ColumnHeader>,
-        id_counter: usize,
-        primary_key: usize,
-    }
+#[derive(Debug, Clone, PartialEq)]
+pub struct Row {
+    id: usize,
+    cells: Vec<Cell>,
+    primary: usize,
+    id_counter: usize,
+}
 
-    #[derive(Debug, Clone, PartialEq)]
-    pub struct SheetBuilder {
-        path: OsString,
-        primary: usize,
-        trim: bool,
-        label_strategy: HeaderLabelStrategy,
-        flexible: bool,
-        type_strategy: HeaderTypesStrategy,
-    }
+#[derive(Debug, Clone, PartialEq)]
+pub struct Sheet {
+    rows: Vec<Row>,
+    headers: Vec<ColumnHeader>,
+    id_counter: usize,
+    primary_key: usize,
+}
 
-    impl SheetBuilder {
-        pub fn new(path: OsString) -> Self {
-            Self {
-                path,
-                primary: 0,
-                trim: false,
-                label_strategy: HeaderLabelStrategy::NoLabels,
-                flexible: false,
-                type_strategy: HeaderTypesStrategy::None,
-            }
-        }
+#[derive(Debug, Clone, PartialEq)]
+pub struct SheetBuilder {
+    path: OsString,
+    primary: usize,
+    trim: bool,
+    label_strategy: HeaderLabelStrategy,
+    flexible: bool,
+    type_strategy: HeaderTypesStrategy,
+}
 
-        pub fn primary(self, primary: usize) -> Self {
-            Self { primary, ..self }
-        }
-
-        pub fn trim(self, trim: bool) -> Self {
-            Self { trim, ..self }
-        }
-
-        pub fn flexible(self, flexible: bool) -> Self {
-            Self { flexible, ..self }
-        }
-
-        pub fn types(self, strategy: HeaderTypesStrategy) -> Self {
-            Self {
-                type_strategy: strategy,
-                ..self
-            }
-        }
-
-        pub fn labels(self, strategy: HeaderLabelStrategy) -> Self {
-            Self {
-                label_strategy: strategy,
-                ..self
-            }
-        }
-
-        pub fn build(self) -> Result<Sheet, CSVError> {
-            Sheet::new(
-                self.path,
-                self.primary,
-                self.label_strategy,
-                self.type_strategy,
-                self.trim,
-                self.flexible,
-            )
+impl SheetBuilder {
+    pub fn new(path: OsString) -> Self {
+        Self {
+            path,
+            primary: 0,
+            trim: false,
+            label_strategy: HeaderLabelStrategy::NoLabels,
+            flexible: false,
+            type_strategy: HeaderTypesStrategy::None,
         }
     }
 
-    impl Cell {
-        pub fn new(id: usize, data: Data) -> Self {
-            Cell { id, data }
-        }
+    pub fn primary(self, primary: usize) -> Self {
+        Self { primary, ..self }
+    }
 
-        pub fn get_data(&self) -> &Data {
-            &self.data
-        }
+    pub fn trim(self, trim: bool) -> Self {
+        Self { trim, ..self }
+    }
 
-        pub fn get_data_mut(&mut self) -> &mut Data {
-            &mut self.data
-        }
+    pub fn flexible(self, flexible: bool) -> Self {
+        Self { flexible, ..self }
+    }
 
-        /// Modifies the data in this cell
-        pub fn set_data(&mut self, new_data: Data) {
-            self.data = new_data;
-        }
-
-        fn validate_type(&self, kind: &ColumnType) -> Result<(), CSVError> {
-            if kind.crosscheck_data(self.data.clone()) {
-                return Ok(());
-            } else {
-                Err(CSVError::InvalidColumnType(format!(
-                    "Expected {:?} type but had {:?} type for cell with id: {}",
-                    kind, self.data, self.id
-                )))
-            }
+    pub fn types(self, strategy: HeaderTypesStrategy) -> Self {
+        Self {
+            type_strategy: strategy,
+            ..self
         }
     }
 
-    impl Row {
-        pub fn new(record: csv::StringRecord, id: usize, primary_index: usize) -> Self {
-            let mut counter: usize = 0;
-            let cells: Vec<Cell> = {
-                let mut cells = vec![];
+    pub fn labels(self, strategy: HeaderLabelStrategy) -> Self {
+        Self {
+            label_strategy: strategy,
+            ..self
+        }
+    }
 
-                record.iter().for_each(|val| {
-                    let data: Data = val.to_string().into();
-                    let cell = Cell::new(counter, data);
-                    cells.push(cell);
-                    counter += 1;
-                });
-                cells
-            };
+    pub fn build(self) -> Result<Sheet, CSVError> {
+        Sheet::new(
+            self.path,
+            self.primary,
+            self.label_strategy,
+            self.type_strategy,
+            self.trim,
+            self.flexible,
+        )
+    }
+}
 
-            Row {
-                id,
-                cells,
-                primary: primary_index,
-                id_counter: counter,
-            }
+#[allow(dead_code)]
+impl Cell {
+    pub fn new(id: usize, data: Data) -> Self {
+        Cell { id, data }
+    }
+
+    pub fn get_data(&self) -> &Data {
+        &self.data
+    }
+
+    pub fn get_data_mut(&mut self) -> &mut Data {
+        &mut self.data
+    }
+
+    /// Modifies the data in this cell
+    pub fn set_data(&mut self, new_data: Data) {
+        self.data = new_data;
+    }
+
+    fn validate_type(&self, kind: &ColumnType) -> Result<(), CSVError> {
+        if kind.crosscheck_data(self.data.clone()) {
+            return Ok(());
+        } else {
+            Err(CSVError::InvalidColumnType(format!(
+                "Expected {:?} type but had {:?} type for cell with id: {}",
+                kind, self.data, self.id
+            )))
+        }
+    }
+}
+
+impl Row {
+    pub fn new(record: csv::StringRecord, id: usize, primary_index: usize) -> Self {
+        let mut counter: usize = 0;
+        let cells: Vec<Cell> = {
+            let mut cells = vec![];
+
+            record.iter().for_each(|val| {
+                let data: Data = val.to_string().into();
+                let cell = Cell::new(counter, data);
+                cells.push(cell);
+                counter += 1;
+            });
+            cells
+        };
+
+        Row {
+            id,
+            cells,
+            primary: primary_index,
+            id_counter: counter,
+        }
+    }
+
+    fn is_key_valid(&self, key: usize) -> bool {
+        self.cells.len() > key
+    }
+
+    pub fn is_primary_key_valid(&self) -> Result<(), CSVError> {
+        if !self.is_key_valid(self.primary) {
+            return Err(CSVError::InvalidPrimaryKey(format!(
+                "Primary key is invalid for row with id: {}",
+                self.id
+            )));
+        };
+        Ok(())
+    }
+
+    fn validate_all_cols(&self, headers: &Vec<ColumnHeader>) -> Result<(), CSVError> {
+        if self.cells.len() != headers.len() {
+            return Err(CSVError::InvalidColumnLength(format!(
+                "Row with id, {}, has unbalanced cells.",
+                self.id
+            )));
         }
 
-        fn is_key_valid(&self, key: usize) -> bool {
-            self.cells.len() > key
-        }
-
-        pub fn is_primary_key_valid(&self) -> Result<(), CSVError> {
-            if !self.is_key_valid(self.primary) {
-                return Err(CSVError::InvalidPrimaryKey(format!(
-                    "Primary key is invalid for row with id: {}",
-                    self.id
-                )));
-            };
-            Ok(())
-        }
-
-        fn validate_all_cols(&self, headers: &Vec<ColumnHeader>) -> Result<(), CSVError> {
-            if self.cells.len() != headers.len() {
-                return Err(CSVError::InvalidColumnLength(format!(
-                    "Row with id, {}, has unbalanced cells.",
-                    self.id
-                )));
-            }
-
-            self.iter_cells()
-                .enumerate()
-                .fold(Ok(()), |acc, curr| match acc {
-                    Err(e) => Err(e),
-                    Ok(()) => {
-                        let header = headers.get(curr.0).unwrap();
-                        if header.crosscheck_data(curr.1.clone().data) {
-                            return Ok(());
-                        } else {
-                            return Err(CSVError::InvalidColumnType(
-                                    format!("Expected {:?} type but had {:?} type for cell id: {}, in row id: {}. ",
-                                        header.kind, curr.1.data, curr.1.id, self.id )))
-                        }
-                    }
-                })
-        }
-
-        fn validate_col(&self, header: &ColumnHeader, col: usize) -> Result<(), CSVError> {
-            let cell = self.cells.get(col);
-            match cell {
-                None => Err(CSVError::InvalidColumnLength(
-                    "Tried to validate out of bounds column".into(),
-                )),
-                Some(cl) => {
-                    if header.crosscheck_data(cl.data.clone()) {
-                        Ok(())
+        self.iter_cells()
+            .enumerate()
+            .fold(Ok(()), |acc, curr| match acc {
+                Err(e) => Err(e),
+                Ok(()) => {
+                    let header = headers.get(curr.0).unwrap();
+                    if header.crosscheck_data(curr.1.clone().data) {
+                        return Ok(());
                     } else {
-                        Err(CSVError::InvalidColumnType(format!(
-                            "Expected cell of {:?} type, but had {:?} type in cell id {} in row id {}",
-                            header.kind, cl.data, cl.id, self.id
-                        )))
+                        return Err(CSVError::InvalidColumnType(format!(
+                            "Expected {:?} type but had {:?} type for cell id: {}, in row id: {}. ",
+                            header.kind, curr.1.data, curr.1.id, self.id
+                        )));
                     }
                 }
-            }
-        }
+            })
+    }
 
-        pub fn set_primary_key(&mut self, new_primary: usize) -> Result<(), CSVError> {
-            if new_primary < self.cells.len() {
-                self.primary = new_primary;
-                Ok(())
-            } else {
-                Err(CSVError::InvalidPrimaryKey(
-                    "Tried to set primary key to invalid value".into(),
-                ))
-            }
-        }
-
-        pub fn iter_cells(&self) -> Iter<'_, Cell> {
-            self.cells.iter()
-        }
-
-        pub fn iter_cells_mut(&mut self) -> IterMut<'_, Cell> {
-            self.cells.iter_mut()
-        }
-
-        pub fn get_primary_key(&self) -> usize {
-            self.primary
-        }
-
-        pub fn get_primary_cell(&self) -> Option<&Cell> {
-            self.cells.get(self.primary)
-        }
-
-        pub fn get_cell_by_id(&self, id: usize) -> Option<&Cell> {
-            self.cells.iter().find(|cl| cl.id == id)
-        }
-
-        pub fn get_cell_by_index(&self, index: usize) -> Option<&Cell> {
-            self.cells.get(index)
-        }
-
-        /// Fill the row with empty cells up to a given length
-        fn balance_cells(&mut self, len: usize) {
-            let ln = self.cells.len();
-
-            if ln >= len {
-                return;
-            }
-
-            for _ in 0..(len - ln) {
-                let empty = Cell::new(self.id_counter, Data::None);
-                self.cells.push(empty);
-                self.id_counter += 1;
-            }
-        }
-
-        ///  Returns a Line whose points have x values from the vector provided
-        ///  and y values as the data in each corresponding cell in this row.
-        ///
-        ///  Intended for use in creating LineGraphs.
-        ///
-        ///  Any unpaired x or y values are ignored
-        fn create_line(
-            &self,
-            label: &LineLabelStrategy,
-            x_values: &Vec<String>,
-            exclude: &HashSet<usize>,
-        ) -> Line<String, Data> {
-            let points: Vec<Point<String, Data>> = match label {
-                LineLabelStrategy::FromCell(idx) => {
-                    let points = x_values
-                        .iter()
-                        .zip(self.cells.iter())
-                        .enumerate()
-                        .filter(|(id, _)| id != idx && !exclude.contains(id))
-                        .map(|(_, (x, cell))| Point::new(x.clone(), cell.data.clone()))
-                        .collect();
-
-                    points
+    fn validate_col(&self, header: &ColumnHeader, col: usize) -> Result<(), CSVError> {
+        let cell = self.cells.get(col);
+        match cell {
+            None => Err(CSVError::InvalidColumnLength(
+                "Tried to validate out of bounds column".into(),
+            )),
+            Some(cl) => {
+                if header.crosscheck_data(cl.data.clone()) {
+                    Ok(())
+                } else {
+                    Err(CSVError::InvalidColumnType(format!(
+                        "Expected cell of {:?} type, but had {:?} type in cell id {} in row id {}",
+                        header.kind, cl.data, cl.id, self.id
+                    )))
                 }
+            }
+        }
+    }
 
-                _ => x_values
+    pub fn set_primary_key(&mut self, new_primary: usize) -> Result<(), CSVError> {
+        if new_primary < self.cells.len() {
+            self.primary = new_primary;
+            Ok(())
+        } else {
+            Err(CSVError::InvalidPrimaryKey(
+                "Tried to set primary key to invalid value".into(),
+            ))
+        }
+    }
+
+    pub fn iter_cells(&self) -> Iter<'_, Cell> {
+        self.cells.iter()
+    }
+
+    pub fn iter_cells_mut(&mut self) -> IterMut<'_, Cell> {
+        self.cells.iter_mut()
+    }
+
+    pub fn get_primary_key(&self) -> usize {
+        self.primary
+    }
+
+    pub fn get_primary_cell(&self) -> Option<&Cell> {
+        self.cells.get(self.primary)
+    }
+
+    pub fn get_cell_by_id(&self, id: usize) -> Option<&Cell> {
+        self.cells.iter().find(|cl| cl.id == id)
+    }
+
+    pub fn get_cell_by_index(&self, index: usize) -> Option<&Cell> {
+        self.cells.get(index)
+    }
+
+    /// Fill the row with empty cells up to a given length
+    fn balance_cells(&mut self, len: usize) {
+        let ln = self.cells.len();
+
+        if ln >= len {
+            return;
+        }
+
+        for _ in 0..(len - ln) {
+            let empty = Cell::new(self.id_counter, Data::None);
+            self.cells.push(empty);
+            self.id_counter += 1;
+        }
+    }
+
+    ///  Returns a Line whose points have x values from the vector provided
+    ///  and y values as the data in each corresponding cell in this row.
+    ///
+    ///  Intended for use in creating LineGraphs.
+    ///
+    ///  Any unpaired x or y values are ignored
+    fn create_line(
+        &self,
+        label: &LineLabelStrategy,
+        x_values: &Vec<String>,
+        exclude: &HashSet<usize>,
+    ) -> Line<String, Data> {
+        let points: Vec<Point<String, Data>> = match label {
+            LineLabelStrategy::FromCell(idx) => {
+                let points = x_values
                     .iter()
                     .zip(self.cells.iter())
                     .enumerate()
-                    .filter(|(id, _)| !exclude.contains(id))
+                    .filter(|(id, _)| id != idx && !exclude.contains(id))
                     .map(|(_, (x, cell))| Point::new(x.clone(), cell.data.clone()))
-                    .collect(),
-            };
+                    .collect();
 
-            let lbl: Option<String> = match label {
-                LineLabelStrategy::None => None,
-                LineLabelStrategy::Provided(s) => Some(s.clone()),
-                LineLabelStrategy::FromCell(idx) => {
-                    if let Some(cell) = self.cells.get(idx.clone()) {
-                        Some(cell.data.to_string())
-                    } else {
-                        None
-                    }
+                points
+            }
+
+            _ => x_values
+                .iter()
+                .zip(self.cells.iter())
+                .enumerate()
+                .filter(|(id, _)| !exclude.contains(id))
+                .map(|(_, (x, cell))| Point::new(x.clone(), cell.data.clone()))
+                .collect(),
+        };
+
+        let lbl: Option<String> = match label {
+            LineLabelStrategy::None => None,
+            LineLabelStrategy::Provided(s) => Some(s.clone()),
+            LineLabelStrategy::FromCell(idx) => {
+                if let Some(cell) = self.cells.get(idx.clone()) {
+                    Some(cell.data.to_string())
+                } else {
+                    None
                 }
-            };
-            Line::from_points(points, lbl)
+            }
+        };
+        Line::from_points(points, lbl)
+    }
+}
+
+#[allow(dead_code)]
+impl Sheet {
+    /// Returns a new T vector with length equal to given length
+    /// A default T is used as padding. Any extras are trimmed
+    fn balance_vector<T: Clone + Default>(lst: Vec<T>, size: usize) -> Vec<T> {
+        let len = lst.len();
+        if len == size {
+            return lst;
+        } else if len < size {
+            let mut cln = lst.clone();
+            let mut pad = vec![T::default(); size - len];
+
+            cln.append(&mut pad);
+
+            return cln;
+        } else {
+            let mut cln = lst.clone();
+            cln.truncate(size);
+            return cln;
         }
     }
 
-    impl Sheet {
-        /// Returns a new T vector with length equal to given length
-        /// A default T is used as padding. Any extras are trimmed
-        fn balance_vector<T: Clone + Default>(lst: Vec<T>, size: usize) -> Vec<T> {
-            let len = lst.len();
-            if len == size {
-                return lst;
-            } else if len < size {
-                let mut cln = lst.clone();
-                let mut pad = vec![T::default(); size - len];
+    /// Create a new sheet given the path to a csv file
+    fn new(
+        path: OsString,
+        primary: usize,
+        label_strategy: HeaderLabelStrategy,
+        type_strategy: HeaderTypesStrategy,
+        trim: bool,
+        flexible: bool,
+    ) -> Result<Self, CSVError> {
+        let mut counter: usize = 0;
+        let mut longest_row = 0;
 
-                cln.append(&mut pad);
+        let has_headers = match label_strategy {
+            HeaderLabelStrategy::ReadLabels => true,
+            HeaderLabelStrategy::NoLabels => false,
+            HeaderLabelStrategy::Provided(_) => false,
+        };
 
-                return cln;
+        let trim = {
+            if trim {
+                Trim::All
             } else {
-                let mut cln = lst.clone();
-                cln.truncate(size);
-                return cln;
+                Trim::None
             }
-        }
+        };
+        let mut rdr = csv::ReaderBuilder::new()
+            .has_headers(has_headers)
+            .trim(trim)
+            .flexible(flexible)
+            .from_path(path)?;
 
-        /// Create a new sheet given the path to a csv file
-        fn new(
-            path: OsString,
-            primary: usize,
-            label_strategy: HeaderLabelStrategy,
-            type_strategy: HeaderTypesStrategy,
-            trim: bool,
-            flexible: bool,
-        ) -> Result<Self, CSVError> {
-            let mut counter: usize = 0;
-            let mut longest_row = 0;
+        let mut rows: Vec<Row> = {
+            let mut rows = vec![];
 
-            let has_headers = match label_strategy {
-                HeaderLabelStrategy::ReadLabels => true,
-                HeaderLabelStrategy::NoLabels => false,
-                HeaderLabelStrategy::Provided(_) => false,
-            };
-
-            let trim = {
-                if trim {
-                    Trim::All
-                } else {
-                    Trim::None
+            for record in rdr.records() {
+                let record = record?;
+                let row = Row::new(record, counter, primary);
+                if row.id_counter > longest_row {
+                    longest_row = row.id_counter;
                 }
-            };
-            let mut rdr = csv::ReaderBuilder::new()
-                .has_headers(has_headers)
-                .trim(trim)
-                .flexible(flexible)
-                .from_path(path)?;
-
-            let mut rows: Vec<Row> = {
-                let mut rows = vec![];
-
-                for record in rdr.records() {
-                    let record = record?;
-                    let row = Row::new(record, counter, primary);
-                    if row.id_counter > longest_row {
-                        longest_row = row.id_counter;
-                    }
-                    rows.push(row);
-                    counter += 1;
-                }
-                rows
-            };
-
-            if flexible {
-                rows.iter_mut()
-                    .for_each(|row| row.balance_cells(longest_row));
+                rows.push(row);
+                counter += 1;
             }
+            rows
+        };
 
-            let types = match &type_strategy {
-                HeaderTypesStrategy::Provided(ct) => {
-                    Sheet::balance_vector(ct.to_owned(), longest_row)
-                }
-                HeaderTypesStrategy::Infer => {
-                    Sheet::balance_vector(Vec::<ColumnType>::new(), longest_row)
-                }
-                HeaderTypesStrategy::None => {
-                    Sheet::balance_vector(Vec::<ColumnType>::new(), longest_row)
-                }
-            };
+        if flexible {
+            rows.iter_mut()
+                .for_each(|row| row.balance_cells(longest_row));
+        }
 
-            let labels = match &label_strategy {
-                HeaderLabelStrategy::Provided(ch) => {
-                    Sheet::balance_vector(ch.to_owned(), longest_row)
-                }
-                HeaderLabelStrategy::NoLabels => {
-                    Sheet::balance_vector(Vec::<String>::new(), longest_row)
-                }
-                HeaderLabelStrategy::ReadLabels => {
-                    let labels: Vec<String> = rdr
-                        .headers()?
-                        .clone()
-                        .into_iter()
-                        .map(|curr| curr.to_string())
-                        .collect();
-                    Sheet::balance_vector(labels, longest_row)
-                }
-            };
-
-            let headers: Vec<ColumnHeader> = labels
-                .into_iter()
-                .zip(types.into_iter())
-                .map(|(lbl, typ)| ColumnHeader::new(lbl, typ))
-                .collect();
-
-            let mut sh = Sheet {
-                rows,
-                headers,
-                id_counter: counter,
-                primary_key: primary,
-            };
-
-            match type_strategy {
-                HeaderTypesStrategy::Infer => {
-                    Sheet::infer_col_kinds(&mut sh, longest_row);
-                }
-                _ => {}
+        let types = match &type_strategy {
+            HeaderTypesStrategy::Provided(ct) => Sheet::balance_vector(ct.to_owned(), longest_row),
+            HeaderTypesStrategy::Infer => {
+                Sheet::balance_vector(Vec::<ColumnType>::new(), longest_row)
             }
+            HeaderTypesStrategy::None => {
+                Sheet::balance_vector(Vec::<ColumnType>::new(), longest_row)
+            }
+        };
 
-            sh.validate()?;
+        let labels = match &label_strategy {
+            HeaderLabelStrategy::Provided(ch) => Sheet::balance_vector(ch.to_owned(), longest_row),
+            HeaderLabelStrategy::NoLabels => {
+                Sheet::balance_vector(Vec::<String>::new(), longest_row)
+            }
+            HeaderLabelStrategy::ReadLabels => {
+                let labels: Vec<String> = rdr
+                    .headers()?
+                    .clone()
+                    .into_iter()
+                    .map(|curr| curr.to_string())
+                    .collect();
+                Sheet::balance_vector(labels, longest_row)
+            }
+        };
 
-            Ok(sh)
+        let headers: Vec<ColumnHeader> = labels
+            .into_iter()
+            .zip(types.into_iter())
+            .map(|(lbl, typ)| ColumnHeader::new(lbl, typ))
+            .collect();
+
+        let mut sh = Sheet {
+            rows,
+            headers,
+            id_counter: counter,
+            primary_key: primary,
+        };
+
+        match type_strategy {
+            HeaderTypesStrategy::Infer => {
+                Sheet::infer_col_kinds(&mut sh, longest_row);
+            }
+            _ => {}
         }
 
-        pub fn get_row_by_index(&self, index: usize) -> Option<&Row> {
-            self.rows.get(index)
+        sh.validate()?;
+
+        Ok(sh)
+    }
+
+    pub fn get_row_by_index(&self, index: usize) -> Option<&Row> {
+        self.rows.get(index)
+    }
+
+    pub fn get_row_by_id(&self, id: usize) -> Option<&Row> {
+        self.rows.iter().find(|row| row.id == id)
+    }
+
+    /// Could be expensive
+    pub fn validate(&self) -> Result<(), CSVError> {
+        // Validating could be expensive
+        Self::is_primary_valid(self)?;
+        Self::validate_all_cols(self)?;
+
+        Ok(())
+    }
+
+    /// Checks if the type for each column cell is as expected
+    fn validate_all_cols(sh: &Sheet) -> Result<(), CSVError> {
+        let hrs = &sh.headers;
+        sh.iter_rows().fold(Ok(()), |acc, curr| match acc {
+            Err(e) => Err(e),
+            Ok(()) => curr.validate_all_cols(hrs),
+        })
+    }
+
+    pub fn validate_col(&self, col: usize) -> Result<(), CSVError> {
+        let hdr = self
+            .headers
+            .get(col)
+            .ok_or(CSVError::InvalidColumnLength(format!(
+                "Tried to access out of range column"
+            )))?;
+
+        self.iter_rows().fold(Ok(()), |acc, curr| match acc {
+            Err(e) => Err(e),
+            Ok(()) => curr.validate_col(hdr, col),
+        })
+    }
+
+    fn is_primary_valid(sh: &Sheet) -> Result<(), CSVError> {
+        let len = sh.headers.len();
+        let pk = sh.primary_key;
+
+        if (len == pk && pk != 0) || (len < pk) {
+            return Err(CSVError::InvalidPrimaryKey(
+                "Primary key out of column range".into(),
+            ));
         }
 
-        pub fn get_row_by_id(&self, id: usize) -> Option<&Row> {
-            self.rows.iter().find(|row| row.id == id)
+        sh.rows.iter().fold(Ok(()), |acc, curr| match acc {
+            Err(e) => Err(e),
+            Ok(()) => curr.is_primary_key_valid(),
+        })
+    }
+
+    fn set_primary_key(&mut self, new_key: usize) -> Result<(), CSVError> {
+        if self
+            .rows
+            .iter()
+            .fold(true, |acc, curr| acc && curr.is_key_valid(new_key))
+        {
+            self.primary_key = new_key;
+            self.rows
+                .iter_mut()
+                .for_each(|row| row.set_primary_key(new_key).unwrap());
+            return Ok(());
         }
+        Err(CSVError::InvalidPrimaryKey(
+            "Tried setting primary key to invalid value".into(),
+        ))
+    }
 
-        /// Could be expensive
-        pub fn validate(&self) -> Result<(), CSVError> {
-            // Validating could be expensive
-            Self::is_primary_valid(self)?;
-            Self::validate_all_cols(self)?;
+    pub fn get_primary_key(&self) -> usize {
+        self.primary_key
+    }
 
-            Ok(())
-        }
+    pub fn iter_rows(&self) -> Iter<'_, Row> {
+        self.rows.iter()
+    }
 
-        /// Checks if the type for each column cell is as expected
-        fn validate_all_cols(sh: &Sheet) -> Result<(), CSVError> {
-            let hrs = &sh.headers;
-            sh.iter_rows().fold(Ok(()), |acc, curr| match acc {
-                Err(e) => Err(e),
-                Ok(()) => curr.validate_all_cols(hrs),
+    /// Should probably call Sheet::validate after using this function
+    pub fn iter_rows_mut(&mut self) -> IterMut<'_, Row> {
+        self.rows.iter_mut()
+    }
+
+    pub fn get_headers(&self) -> &Vec<ColumnHeader> {
+        &self.headers
+    }
+
+    pub fn sort_rows(&mut self, col: usize) -> Result<(), CSVError> {
+        let ch = self
+            .headers
+            .get(col)
+            .ok_or(CSVError::InvalidColumnLength("Column out of range".into()))?;
+
+        match ch {
+            ColumnHeader {
+                label: _,
+                kind: ColumnType::None,
+            } => {
+                return Err(CSVError::InvalidColumnSort(
+                    "Tried to sort by an unstructured column ".into(),
+                ))
+            }
+            _ => {}
+        };
+
+        self.validate_col(col)?;
+
+        let asc = |x: &Row, y: &Row| {
+            let d1 = &x.cells.get(col).unwrap().data;
+            let d2 = &y.cells.get(col).unwrap().data;
+
+            match (d1, d2) {
+                (Data::None, Data::None) => std::cmp::Ordering::Equal,
+                (Data::Text(s1), Data::Text(s2)) => s1.cmp(s2),
+                (Data::Float(f1), Data::Float(f2)) => f1.total_cmp(f2),
+                (Data::Number(n1), Data::Number(n2)) => n1.cmp(n2),
+                (Data::Integer(i1), Data::Integer(i2)) => i1.cmp(i2),
+                (Data::Boolean(b1), Data::Boolean(b2)) => b1.cmp(b2),
+                // Should never reach this case. Previous checks ensure that
+                _ => std::cmp::Ordering::Equal,
+            }
+        };
+
+        self.rows.sort_by(asc);
+
+        Ok(())
+    }
+
+    pub fn sort_rows_rev(&mut self, col: usize) -> Result<(), CSVError> {
+        let ch = self
+            .headers
+            .get(col)
+            .ok_or(CSVError::InvalidColumnLength("Column out of range".into()))?;
+
+        match ch {
+            ColumnHeader {
+                label: _,
+                kind: ColumnType::None,
+            } => {
+                return Err(CSVError::InvalidColumnSort(
+                    "Tried to sort by an unstructured column ".into(),
+                ))
+            }
+            _ => {}
+        };
+
+        self.validate_col(col)?;
+
+        let desc = |x: &Row, y: &Row| {
+            let d1 = &x.cells.get(col).unwrap().data;
+            let d2 = &y.cells.get(col).unwrap().data;
+
+            match (d1, d2) {
+                (Data::None, Data::None) => std::cmp::Ordering::Equal,
+                (Data::Text(s1), Data::Text(s2)) => s2.cmp(s1),
+                (Data::Float(f1), Data::Float(f2)) => f2.total_cmp(f1),
+                (Data::Number(n1), Data::Number(n2)) => n2.cmp(n1),
+                (Data::Integer(i1), Data::Integer(i2)) => i2.cmp(i1),
+                (Data::Boolean(b1), Data::Boolean(b2)) => b2.cmp(b1),
+                // Should never reach this case. Previous checks ensure that
+                _ => std::cmp::Ordering::Equal,
+            }
+        };
+
+        self.rows.sort_by(desc);
+
+        Ok(())
+    }
+
+    fn infer_col_kinds(sh: &mut Self, header_len: usize) {
+        let mut is_first_iteration = true;
+        let col_kinds: Vec<ColumnType> = sh
+            .iter_rows()
+            .map(|rw| {
+                rw.iter_cells()
+                    .map(|cl| cl.get_data().clone().into())
+                    .collect::<Vec<ColumnType>>()
             })
-        }
-
-        pub fn validate_col(&self, col: usize) -> Result<(), CSVError> {
-            let hdr = self
-                .headers
-                .get(col)
-                .ok_or(CSVError::InvalidColumnLength(format!(
-                    "Tried to access out of range column"
-                )))?;
-
-            self.iter_rows().fold(Ok(()), |acc, curr| match acc {
-                Err(e) => Err(e),
-                Ok(()) => curr.validate_col(hdr, col),
-            })
-        }
-
-        fn is_primary_valid(sh: &Sheet) -> Result<(), CSVError> {
-            let len = sh.headers.len();
-            let pk = sh.primary_key;
-
-            if (len == pk && pk != 0) || (len < pk) {
-                return Err(CSVError::InvalidPrimaryKey(
-                    "Primary key out of column range".into(),
-                ));
-            }
-
-            sh.rows.iter().fold(Ok(()), |acc, curr| match acc {
-                Err(e) => Err(e),
-                Ok(()) => curr.is_primary_key_valid(),
-            })
-        }
-
-        fn set_primary_key(&mut self, new_key: usize) -> Result<(), CSVError> {
-            if self
-                .rows
-                .iter()
-                .fold(true, |acc, curr| acc && curr.is_key_valid(new_key))
-            {
-                self.primary_key = new_key;
-                self.rows
-                    .iter_mut()
-                    .for_each(|row| row.set_primary_key(new_key).unwrap());
-                return Ok(());
-            }
-            Err(CSVError::InvalidPrimaryKey(
-                "Tried setting primary key to invalid value".into(),
-            ))
-        }
-
-        pub fn get_primary_key(&self) -> usize {
-            self.primary_key
-        }
-
-        pub fn iter_rows(&self) -> Iter<'_, Row> {
-            self.rows.iter()
-        }
-
-        /// Should probably call Sheet::validate after using this function
-        pub fn iter_rows_mut(&mut self) -> IterMut<'_, Row> {
-            self.rows.iter_mut()
-        }
-
-        pub fn get_headers(&self) -> &Vec<ColumnHeader> {
-            &self.headers
-        }
-
-        pub fn sort_rows(&mut self, col: usize) -> Result<(), CSVError> {
-            let ch = self
-                .headers
-                .get(col)
-                .ok_or(CSVError::InvalidColumnLength("Column out of range".into()))?;
-
-            match ch {
-                ColumnHeader {
-                    label: _,
-                    kind: ColumnType::None,
-                } => {
-                    return Err(CSVError::InvalidColumnSort(
-                        "Tried to sort by an unstructured column ".into(),
-                    ))
-                }
-                _ => {}
-            };
-
-            self.validate_col(col)?;
-
-            let asc = |x: &Row, y: &Row| {
-                let d1 = &x.cells.get(col).unwrap().data;
-                let d2 = &y.cells.get(col).unwrap().data;
-
-                match (d1, d2) {
-                    (Data::None, Data::None) => std::cmp::Ordering::Equal,
-                    (Data::Text(s1), Data::Text(s2)) => s1.cmp(s2),
-                    (Data::Float(f1), Data::Float(f2)) => f1.total_cmp(f2),
-                    (Data::Number(n1), Data::Number(n2)) => n1.cmp(n2),
-                    (Data::Integer(i1), Data::Integer(i2)) => i1.cmp(i2),
-                    (Data::Boolean(b1), Data::Boolean(b2)) => b1.cmp(b2),
-                    // Should never reach this case. Previous checks ensure that
-                    _ => std::cmp::Ordering::Equal,
-                }
-            };
-
-            self.rows.sort_by(asc);
-
-            Ok(())
-        }
-
-        pub fn sort_rows_rev(&mut self, col: usize) -> Result<(), CSVError> {
-            let ch = self
-                .headers
-                .get(col)
-                .ok_or(CSVError::InvalidColumnLength("Column out of range".into()))?;
-
-            match ch {
-                ColumnHeader {
-                    label: _,
-                    kind: ColumnType::None,
-                } => {
-                    return Err(CSVError::InvalidColumnSort(
-                        "Tried to sort by an unstructured column ".into(),
-                    ))
-                }
-                _ => {}
-            };
-
-            self.validate_col(col)?;
-
-            let desc = |x: &Row, y: &Row| {
-                let d1 = &x.cells.get(col).unwrap().data;
-                let d2 = &y.cells.get(col).unwrap().data;
-
-                match (d1, d2) {
-                    (Data::None, Data::None) => std::cmp::Ordering::Equal,
-                    (Data::Text(s1), Data::Text(s2)) => s2.cmp(s1),
-                    (Data::Float(f1), Data::Float(f2)) => f2.total_cmp(f1),
-                    (Data::Number(n1), Data::Number(n2)) => n2.cmp(n1),
-                    (Data::Integer(i1), Data::Integer(i2)) => i2.cmp(i1),
-                    (Data::Boolean(b1), Data::Boolean(b2)) => b2.cmp(b1),
-                    // Should never reach this case. Previous checks ensure that
-                    _ => std::cmp::Ordering::Equal,
-                }
-            };
-
-            self.rows.sort_by(desc);
-
-            Ok(())
-        }
-
-        fn infer_col_kinds(sh: &mut Self, header_len: usize) {
-            let mut is_first_iteration = true;
-            let col_kinds: Vec<ColumnType> = sh
-                .iter_rows()
-                .map(|rw| {
-                    rw.iter_cells()
-                        .map(|cl| cl.get_data().clone().into())
-                        .collect::<Vec<ColumnType>>()
-                })
-                .fold(vec![None; header_len], |acc, curr| {
-                    acc.into_iter()
-                        .zip(curr)
-                        .map(|(ac, cr)| match ac {
-                            None => Some(cr),
-                            Some(ac) => match (ac, cr) {
-                                (ColumnType::None, x) => {
-                                    if is_first_iteration {
-                                        is_first_iteration = false;
-                                        Some(x)
-                                    } else {
-                                        Some(ColumnType::None)
-                                    }
+            .fold(vec![None; header_len], |acc, curr| {
+                acc.into_iter()
+                    .zip(curr)
+                    .map(|(ac, cr)| match ac {
+                        None => Some(cr),
+                        Some(ac) => match (ac, cr) {
+                            (ColumnType::None, x) => {
+                                if is_first_iteration {
+                                    is_first_iteration = false;
+                                    Some(x)
+                                } else {
+                                    Some(ColumnType::None)
                                 }
-                                (y, ColumnType::None) => Some(y),
-                                (ac, cr) if ac == cr => Some(ac),
-                                _ => Some(ColumnType::None),
-                            },
-                        })
-                        .collect()
-                })
-                .into_iter()
-                .map(|op| op.unwrap_or(ColumnType::default()))
-                .collect();
-
-            sh.headers.iter_mut().zip(col_kinds).for_each(|(hdr, knd)| {
-                hdr.kind = knd;
-            });
-        }
-
-        /// initial_header: The new label for the initial header, if any
-        ///
-        /// uniform_type: Whether every non-zeroth column has the same type.
-        /// types are lost if false
-        pub fn transpose(self: &Self, initial_header: Option<String>) -> Result<Self, CSVError> {
-            Sheet::validate(&self)?;
-
-            let width = self.headers.len();
-            let depth = self.rows.len() + 1;
-
-            let mut headers: Vec<ColumnHeader> = Vec::new();
-            let mut rows: Vec<Vec<Cell>> = Vec::new();
-
-            for idx in 0..width {
-                let hr = match self.headers.get(idx) {
-                    Some(hdr) => {
-                        let mut h = hdr.clone();
-                        h.kind = ColumnType::Text;
-                        h
-                    }
-                    None => {
-                        return Err(CSVError::TransposeError("Sheet has missing headers".into()))
-                    }
-                };
-
-                if idx == 0 {
-                    let hr = match &initial_header {
-                        None => hr,
-                        Some(lbl) => ColumnHeader::new(lbl.clone(), hr.kind),
-                    };
-                    let mut hrs = self
-                        .iter_rows()
-                        .fold(Vec::<ColumnHeader>::new(), |acc, curr| {
-                            let cln = match curr.get_cell_by_index(0).unwrap() {
-                                Cell {
-                                    id: _,
-                                    data: Data::None,
-                                } => String::new(),
-                                Cell { id: _, data: d } => d.to_string(),
-                            };
-                            let hdr = ColumnHeader::new(cln, ColumnType::None);
-                            let mut acc = acc;
-                            acc.push(hdr);
-                            acc
-                        });
-                    headers.push(hr);
-                    headers.append(&mut hrs);
-                } else {
-                    let first = Cell::new(0, hr.label.into());
-                    let mut rw = vec![first];
-                    let mut cls: Vec<Cell> = self
-                        .iter_rows()
-                        .enumerate()
-                        .map(|(id, rw)| {
-                            let id = id + 1;
-                            match rw.get_cell_by_index(idx) {
-                                Some(cl) => {
-                                    let mut cl = cl.clone();
-                                    cl.id = id;
-                                    cl
-                                }
-                                None => Cell::new(id, Data::default()),
                             }
-                        })
-                        .collect();
-                    rw.append(&mut cls);
-                    rows.push(rw);
+                            (y, ColumnType::None) => Some(y),
+                            (ac, cr) if ac == cr => Some(ac),
+                            _ => Some(ColumnType::None),
+                        },
+                    })
+                    .collect()
+            })
+            .into_iter()
+            .map(|op| op.unwrap_or(ColumnType::default()))
+            .collect();
+
+        sh.headers.iter_mut().zip(col_kinds).for_each(|(hdr, knd)| {
+            hdr.kind = knd;
+        });
+    }
+
+    /// initial_header: The new label for the initial header, if any
+    ///
+    /// uniform_type: Whether every non-zeroth column has the same type.
+    /// types are lost if false
+    pub fn transpose(self: &Self, initial_header: Option<String>) -> Result<Self, CSVError> {
+        Sheet::validate(&self)?;
+
+        let width = self.headers.len();
+        let depth = self.rows.len() + 1;
+
+        let mut headers: Vec<ColumnHeader> = Vec::new();
+        let mut rows: Vec<Vec<Cell>> = Vec::new();
+
+        for idx in 0..width {
+            let hr = match self.headers.get(idx) {
+                Some(hdr) => {
+                    let mut h = hdr.clone();
+                    h.kind = ColumnType::Text;
+                    h
                 }
-            }
-
-            let rows: Vec<Row> = rows
-                .into_iter()
-                .enumerate()
-                .map(|(id, cells)| Row {
-                    cells,
-                    primary: 0,
-                    id,
-                    id_counter: depth,
-                })
-                .collect();
-
-            let mut sh = Sheet {
-                rows,
-                headers,
-                id_counter: width - 1,
-                primary_key: 0,
+                None => return Err(CSVError::TransposeError("Sheet has missing headers".into())),
             };
 
-            Self::infer_col_kinds(&mut sh, depth);
-
-            Self::validate(&sh)?;
-
-            Ok(sh)
+            if idx == 0 {
+                let hr = match &initial_header {
+                    None => hr,
+                    Some(lbl) => ColumnHeader::new(lbl.clone(), hr.kind),
+                };
+                let mut hrs = self
+                    .iter_rows()
+                    .fold(Vec::<ColumnHeader>::new(), |acc, curr| {
+                        let cln = match curr.get_cell_by_index(0).unwrap() {
+                            Cell {
+                                id: _,
+                                data: Data::None,
+                            } => String::new(),
+                            Cell { id: _, data: d } => d.to_string(),
+                        };
+                        let hdr = ColumnHeader::new(cln, ColumnType::None);
+                        let mut acc = acc;
+                        acc.push(hdr);
+                        acc
+                    });
+                headers.push(hr);
+                headers.append(&mut hrs);
+            } else {
+                let first = Cell::new(0, hr.label.into());
+                let mut rw = vec![first];
+                let mut cls: Vec<Cell> = self
+                    .iter_rows()
+                    .enumerate()
+                    .map(|(id, rw)| {
+                        let id = id + 1;
+                        match rw.get_cell_by_index(idx) {
+                            Some(cl) => {
+                                let mut cl = cl.clone();
+                                cl.id = id;
+                                cl
+                            }
+                            None => Cell::new(id, Data::default()),
+                        }
+                    })
+                    .collect();
+                rw.append(&mut cls);
+                rows.push(rw);
+            }
         }
 
-        fn copy_col_data(&self, col: usize) -> Result<Vec<Data>, CSVError> {
-            self.validate_col(col)?;
+        let rows: Vec<Row> = rows
+            .into_iter()
+            .enumerate()
+            .map(|(id, cells)| Row {
+                cells,
+                primary: 0,
+                id,
+                id_counter: depth,
+            })
+            .collect();
 
-            let data: Vec<Data> = self
-                .iter_rows()
-                .map(|row| {
-                    let cl = row.get_cell_by_index(col).unwrap();
-                    cl.data.clone()
-                })
-                .collect();
+        let mut sh = Sheet {
+            rows,
+            headers,
+            id_counter: width - 1,
+            primary_key: 0,
+        };
 
-            Ok(data)
+        Self::infer_col_kinds(&mut sh, depth);
+
+        Self::validate(&sh)?;
+
+        Ok(sh)
+    }
+
+    fn copy_col_data(&self, col: usize) -> Result<Vec<Data>, CSVError> {
+        self.validate_col(col)?;
+
+        let data: Vec<Data> = self
+            .iter_rows()
+            .map(|row| {
+                let cl = row.get_cell_by_index(col).unwrap();
+                cl.data.clone()
+            })
+            .collect();
+
+        Ok(data)
+    }
+
+    fn grab_header(&self, col: usize) -> Result<&ColumnHeader, CSVError> {
+        let hr = self.headers.get(col).ok_or(CSVError::InvalidColumnLength(
+            "Tried accessing an out of bounds Header".into(),
+        ))?;
+
+        match hr.kind {
+            ColumnType::None => {
+                return Err(CSVError::ConversionError(
+                    "Cannot convert non uniform type column".into(),
+                ))
+            }
+            _ => Ok(hr),
         }
+    }
 
-        fn grab_header(&self, col: usize) -> Result<&ColumnHeader, CSVError> {
-            let hr = self.headers.get(col).ok_or(CSVError::InvalidColumnLength(
-                "Tried accessing an out of bounds Header".into(),
-            ))?;
-
-            match hr.kind {
-                ColumnType::None => {
+    fn validate_to_line_graph(&self, label_strat: &LineLabelStrategy) -> Result<(), CSVError> {
+        // None type Columns
+        self.headers
+            .iter()
+            .fold(Ok(()), |acc, curr| match (acc, &curr.kind) {
+                (Err(e), _) => return Err(e),
+                (Ok(_), ColumnType::None) => {
                     return Err(CSVError::ConversionError(
                         "Cannot convert non uniform type column".into(),
-                    ))
+                    ));
                 }
-                _ => Ok(hr),
-            }
-        }
+                (Ok(_), _) => Ok(()),
+            })?;
 
-        fn validate_to_line_graph(&self, label_strat: &LineLabelStrategy) -> Result<(), CSVError> {
-            // None type Columns
-            self.headers
-                .iter()
-                .fold(Ok(()), |acc, curr| match (acc, &curr.kind) {
-                    (Err(e), _) => return Err(e),
-                    (Ok(_), ColumnType::None) => {
-                        return Err(CSVError::ConversionError(
-                            "Cannot convert non uniform type column".into(),
-                        ));
-                    }
-                    (Ok(_), _) => Ok(()),
-                })?;
-
-            let check_uniform_type = |acc: Result<ColumnType, CSVError>, ct: ColumnType| {
-                if let Ok(acc) = acc {
-                    match (&acc, &ct) {
-                        (ColumnType::None, _) => Ok(ct),
-                        (x, y) => {
-                            if x == y {
-                                return Ok(ct);
-                            } else {
-                                return Err(CSVError::ConversionError(
-                                    "Cannot convert different column types".into(),
-                                ));
-                            }
+        let check_uniform_type = |acc: Result<ColumnType, CSVError>, ct: ColumnType| {
+            if let Ok(acc) = acc {
+                match (&acc, &ct) {
+                    (ColumnType::None, _) => Ok(ct),
+                    (x, y) => {
+                        if x == y {
+                            return Ok(ct);
+                        } else {
+                            return Err(CSVError::ConversionError(
+                                "Cannot convert different column types".into(),
+                            ));
                         }
                     }
-                } else {
-                    return acc;
                 }
-            };
+            } else {
+                return acc;
+            }
+        };
 
-            // Uniform type columns
-            match label_strat {
-                LineLabelStrategy::FromCell(idx) => {
-                    if idx >= &self.headers.len() {
-                        return Err(CSVError::ConversionError(
-                            "Tried to assign invalid column as label".into(),
-                        ));
-                    }
-
-                    self.headers
-                        .iter()
-                        .map(|hrd| &hrd.kind)
-                        .enumerate()
-                        .filter(|(ind, _)| ind != idx)
-                        .fold(Ok(ColumnType::None), |acc, (_, ct)| {
-                            check_uniform_type(acc, ct.clone())
-                        })?;
+        // Uniform type columns
+        match label_strat {
+            LineLabelStrategy::FromCell(idx) => {
+                if idx >= &self.headers.len() {
+                    return Err(CSVError::ConversionError(
+                        "Tried to assign invalid column as label".into(),
+                    ));
                 }
 
-                _ => {
-                    self.headers
-                        .iter()
-                        .map(|hdr| &hdr.kind)
-                        .fold(Ok(ColumnType::None), |acc, ct| {
-                            check_uniform_type(acc, ct.clone())
-                        })?;
-                }
+                self.headers
+                    .iter()
+                    .map(|hrd| &hrd.kind)
+                    .enumerate()
+                    .filter(|(ind, _)| ind != idx)
+                    .fold(Ok(ColumnType::None), |acc, (_, ct)| {
+                        check_uniform_type(acc, ct.clone())
+                    })?;
             }
 
-            Ok(())
+            _ => {
+                self.headers
+                    .iter()
+                    .map(|hdr| &hdr.kind)
+                    .fold(Ok(ColumnType::None), |acc, ct| {
+                        check_uniform_type(acc, ct.clone())
+                    })?;
+            }
         }
 
-        /// Returns a new line graph created from this csv struct
-        ///
-        /// exclude_row: The positions of the rows to exclude in this transformation
-        /// exclude_column: The positions of columns to exclude in the
-        /// transformation
-        pub fn create_line_graph(
-            self: &Self,
-            x_label: Option<String>,
-            y_label: Option<String>,
-            label_strat: LineLabelStrategy,
-            exclude_row: HashSet<usize>,
-            exclude_column: HashSet<usize>,
-        ) -> Result<LineGraph<String, Data>, CSVError> {
-            self.validate()?;
-            self.validate_to_line_graph(&label_strat)?;
-
-            let x_values: Vec<String> = {
-                let values: Vec<String> = self
-                    .headers
-                    .iter()
-                    .enumerate()
-                    .map(|(_, hdr)| hdr.label.clone())
-                    .collect();
-                values
-            };
-
-            let lines: Vec<Line<String, Data>> = self
-                .iter_rows()
-                .enumerate()
-                .filter(|(idx, _)| !exclude_row.contains(idx))
-                .map(|(_, rw)| rw.create_line(&label_strat, &x_values, &exclude_column))
-                .collect();
-
-            let y_scale: Scale<Data> = {
-                let values: HashSet<Data> = lines
-                    .iter()
-                    .flat_map(|ln| ln.points.iter().map(|pnt| pnt.y.clone()))
-                    .collect();
-
-                Scale::List(values.into_iter().collect())
-            };
-
-            let x_scale = {
-                let values: HashSet<String> = match label_strat {
-                    LineLabelStrategy::FromCell(ref id) => x_values
-                        .into_iter()
-                        .enumerate()
-                        .filter(|(idx, _)| idx != id && !exclude_column.contains(idx))
-                        .map(|(_, lbl)| lbl)
-                        .collect(),
-                    _ => x_values
-                        .into_iter()
-                        .enumerate()
-                        .filter(|(idx, _)| !exclude_column.contains(idx))
-                        .map(|(_, lbl)| lbl)
-                        .collect(),
-                };
-                Scale::List(values.into_iter().collect())
-            };
-
-            let lg = LineGraph::new(lines, x_label, y_label, x_scale, y_scale)
-                .map_err(CSVError::LineGraphError)?;
-
-            Ok(lg)
-        }
+        Ok(())
     }
 
-    impl ToLineGraph for Sheet {
-        type X = String;
-        type Y = Data;
-        type ErrorType = CSVError;
+    /// Returns a new line graph created from this csv struct
+    ///
+    /// exclude_row: The positions of the rows to exclude in this transformation
+    /// exclude_column: The positions of columns to exclude in the
+    /// transformation
+    pub fn create_line_graph(
+        self: &Self,
+        x_label: Option<String>,
+        y_label: Option<String>,
+        label_strat: LineLabelStrategy,
+        exclude_row: HashSet<usize>,
+        exclude_column: HashSet<usize>,
+    ) -> Result<LineGraph<String, Data>, CSVError> {
+        self.validate()?;
+        self.validate_to_line_graph(&label_strat)?;
 
-        fn to_line_graph(
-            self: &Self,
-            x_label: Option<String>,
-            y_label: Option<String>,
-        ) -> Result<LineGraph<Self::X, Self::Y>, Self::ErrorType> {
-            Sheet::create_line_graph(
-                &self,
-                x_label,
-                y_label,
-                LineLabelStrategy::None,
-                HashSet::new(),
-                HashSet::new(),
-            )
-        }
+        let x_values: Vec<String> = {
+            let values: Vec<String> = self
+                .headers
+                .iter()
+                .enumerate()
+                .map(|(_, hdr)| hdr.label.clone())
+                .collect();
+            values
+        };
+
+        let lines: Vec<Line<String, Data>> = self
+            .iter_rows()
+            .enumerate()
+            .filter(|(idx, _)| !exclude_row.contains(idx))
+            .map(|(_, rw)| rw.create_line(&label_strat, &x_values, &exclude_column))
+            .collect();
+
+        let y_scale: Scale<Data> = {
+            let values: HashSet<Data> = lines
+                .iter()
+                .flat_map(|ln| ln.points.iter().map(|pnt| pnt.y.clone()))
+                .collect();
+
+            Scale::List(values.into_iter().collect())
+        };
+
+        let x_scale = {
+            let values: HashSet<String> = match label_strat {
+                LineLabelStrategy::FromCell(ref id) => x_values
+                    .into_iter()
+                    .enumerate()
+                    .filter(|(idx, _)| idx != id && !exclude_column.contains(idx))
+                    .map(|(_, lbl)| lbl)
+                    .collect(),
+                _ => x_values
+                    .into_iter()
+                    .enumerate()
+                    .filter(|(idx, _)| !exclude_column.contains(idx))
+                    .map(|(_, lbl)| lbl)
+                    .collect(),
+            };
+            Scale::List(values.into_iter().collect())
+        };
+
+        let lg = LineGraph::new(lines, x_label, y_label, x_scale, y_scale)
+            .map_err(CSVError::LineGraphError)?;
+
+        Ok(lg)
+    }
+}
+
+impl ToLineGraph for Sheet {
+    type X = String;
+    type Y = Data;
+    type ErrorType = CSVError;
+
+    fn to_line_graph(
+        self: &Self,
+        x_label: Option<String>,
+        y_label: Option<String>,
+    ) -> Result<LineGraph<Self::X, Self::Y>, Self::ErrorType> {
+        Sheet::create_line_graph(
+            &self,
+            x_label,
+            y_label,
+            LineLabelStrategy::None,
+            HashSet::new(),
+            HashSet::new(),
+        )
     }
 }
 
@@ -1247,8 +1243,7 @@ mod tests {
     use std::ffi::OsString;
     use std::usize;
 
-    use super::csv_repr::*;
-    use super::utils::*;
+    use super::*;
 
     fn create_row() -> Row {
         let sr = csv::StringRecord::from(vec!["3", "2", "1"]);
