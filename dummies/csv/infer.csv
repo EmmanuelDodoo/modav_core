@@ -1,0 +1,4 @@
+Month, Year, Percentage, Mixed, Expected, Test
+JAN,  1998,  0.24,  417, true, 
+FEB,  1999,  0.79,  "Nothing", true, Something
+MAR,  2000,  1.00,  419, false, Else
