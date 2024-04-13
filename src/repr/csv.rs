@@ -1265,9 +1265,9 @@ pub mod utils {
                 f,
                 "{}",
                 match self {
-                    Self::Infer => "Infer header types",
-                    Self::Provided(_) => "Provide header types",
-                    Self::None => "No header types",
+                    Self::Infer => "Infer types",
+                    Self::Provided(_) => "Provide types",
+                    Self::None => "No types",
                 },
             )
         }
