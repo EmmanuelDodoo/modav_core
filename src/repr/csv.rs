@@ -1171,6 +1171,23 @@ pub mod utils {
         }
     }
 
+    impl fmt::Display for ColumnType {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(
+                f,
+                "{}",
+                match self {
+                    Self::None => "No Column Type",
+                    Self::Bool => "Boolean Column Type",
+                    Self::Text => "Text Column Type",
+                    Self::Float => "Float Column Type",
+                    Self::Integer => "Integer Column Type",
+                    Self::Number => "Number Column Type",
+                }
+            )
+        }
+    }
+
     #[derive(Debug, Clone, PartialEq)]
     pub struct ColumnHeader {
         pub label: String,
@@ -1217,6 +1234,20 @@ pub mod utils {
         Provided(Vec<String>),
     }
 
+    impl fmt::Display for HeaderLabelStrategy {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(
+                f,
+                "{}",
+                match self {
+                    Self::Provided(_) => "Header Labels Provided",
+                    Self::ReadLabels => "Read Header Labels",
+                    Self::NoLabels => "No Header Labels",
+                }
+            )
+        }
+    }
+
     #[derive(Debug, Clone, PartialEq, Default)]
     pub enum HeaderTypesStrategy {
         /// The types are infered from the csv
@@ -1228,12 +1259,40 @@ pub mod utils {
         None,
     }
 
+    impl fmt::Display for HeaderTypesStrategy {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(
+                f,
+                "{}",
+                match self {
+                    Self::Infer => "Infer header types",
+                    Self::Provided(_) => "Provide header types",
+                    Self::None => "No header types",
+                },
+            )
+        }
+    }
+
     #[derive(Debug, Clone, PartialEq, Default)]
     pub enum LineLabelStrategy {
         FromCell(usize),
         Provided(String),
         #[default]
         None,
+    }
+
+    impl fmt::Display for LineLabelStrategy {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(
+                f,
+                "{}",
+                match self {
+                    Self::None => "No line labels",
+                    Self::FromCell(_) => "Label using a cell",
+                    Self::Provided(_) => "Label provided",
+                }
+            )
+        }
     }
 }
 
