@@ -40,6 +40,7 @@ pub struct SheetBuilder {
     label_strategy: HeaderLabelStrategy,
     flexible: bool,
     type_strategy: HeaderTypesStrategy,
+    delimiter: u8,
 }
 
 impl SheetBuilder {
@@ -51,6 +52,7 @@ impl SheetBuilder {
             label_strategy: HeaderLabelStrategy::NoLabels,
             flexible: false,
             type_strategy: HeaderTypesStrategy::None,
+            delimiter: b',',
         }
     }
 
@@ -80,6 +82,11 @@ impl SheetBuilder {
         }
     }
 
+    pub fn delimiter(mut self, delimiter: u8) -> Self {
+        self.delimiter = delimiter;
+        self
+    }
+
     pub fn build(self) -> Result<Sheet, CSVError> {
         Sheet::new(
             self.path,
@@ -88,6 +95,7 @@ impl SheetBuilder {
             self.type_strategy,
             self.trim,
             self.flexible,
+            self.delimiter,
         )
     }
 }
@@ -334,6 +342,7 @@ impl Sheet {
         type_strategy: HeaderTypesStrategy,
         trim: bool,
         flexible: bool,
+        delimiter: u8,
     ) -> Result<Self, CSVError> {
         let mut counter: usize = 0;
         let mut longest_row = 0;
@@ -355,6 +364,7 @@ impl Sheet {
             .has_headers(has_headers)
             .trim(trim)
             .flexible(flexible)
+            .delimiter(delimiter)
             .from_path(path)?;
 
         let mut rows: Vec<Row> = {
@@ -1265,9 +1275,9 @@ pub mod utils {
                 f,
                 "{}",
                 match self {
-                    Self::Infer => "Infer header types",
-                    Self::Provided(_) => "Provide header types",
-                    Self::None => "No header types",
+                    Self::Infer => "Infer types",
+                    Self::Provided(_) => "Provide types",
+                    Self::None => "No types",
                 },
             )
         }
