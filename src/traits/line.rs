@@ -1,8 +1,10 @@
+use std::fmt::Debug;
+
 use crate::models::line::LineGraph;
 
 pub trait ToLineGraph {
-    type X;
-    type Y;
+    type X: Clone + Debug;
+    type Y: Clone + Debug;
     type ErrorType;
 
     fn to_line_graph(

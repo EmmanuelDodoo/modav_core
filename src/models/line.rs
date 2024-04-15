@@ -14,13 +14,31 @@ pub struct Line<X, Y> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Scale<T> {
-    Range(Range<T>),
+pub enum Scale<T>
+where
+    T: Clone + Debug,
+{
+    // Range(Range<T>),
     List(Vec<T>),
 }
 
+impl<T> Scale<T>
+where
+    T: Clone + Debug,
+{
+    pub fn points(&self) -> Vec<T> {
+        match self {
+            Self::List(lst) => lst.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
-pub struct LineGraph<X, Y> {
+pub struct LineGraph<X, Y>
+where
+    X: Clone + Debug,
+    Y: Clone + Debug,
+{
     pub lines: Vec<Line<X, Y>>,
     pub x_label: String,
     pub y_label: String,
@@ -48,6 +66,7 @@ impl<X, Y> Line<X, Y> {
     }
 }
 
+#[allow(dead_code)]
 impl<X, Y> LineGraph<X, Y>
 where
     X: Eq + Clone + Hash + PartialOrd + ToString + Debug,
@@ -72,14 +91,14 @@ where
 
         let x_scale = {
             match x_scale {
-                Scale::Range(rng) => Scale::Range(LineGraph::assert_range_scales_x(rng, &lines)?),
+                // Scale::Range(rng) => Scale::Range(LineGraph::assert_range_scales_x(rng, &lines)?),
                 Scale::List(lst) => Scale::List(LineGraph::assert_list_scales_x(lst, &lines)?),
             }
         };
 
         let y_scale = {
             match y_scale {
-                Scale::Range(rng) => Scale::Range(LineGraph::assert_range_scales_y(rng, &lines)?),
+                // Scale::Range(rng) => Scale::Range(LineGraph::assert_range_scales_y(rng, &lines)?),
                 Scale::List(lst) => Scale::List(LineGraph::assert_list_scales_y(lst, &lines)?),
             }
         };
@@ -271,7 +290,12 @@ mod line_tests {
         let pnt1 = create_line_from_new(p2, Some("Deutsch".into()));
         let pnt2 = create_line_from_points(p1, Some("English".into()));
 
-        let x_scale: Scale<usize> = Scale::Range(0..60);
+        // let x_scale: Scale<usize> = Scale::Range(0..60);
+        let x_scale: Scale<usize> = {
+            let rng = 0..60;
+
+            Scale::List(rng.collect())
+        };
         let y_scale: Scale<&str> = Scale::List(vec!["one", "two", "three", "four", "five"]);
 
         match LineGraph::new(
@@ -290,8 +314,15 @@ mod line_tests {
         let p1: Vec<(isize, isize)> = vec![(0, 0), (1, 1), (20, 2), (3, 35)];
         let p2: Vec<(isize, isize)> = vec![(10, 10), (4, 8), (-3, 3)];
 
-        let x_scale: Scale<isize> = Scale::Range(-5..11);
-        let y_scale: Scale<isize> = Scale::Range(2..10);
+        let x_scale: Scale<isize> = {
+            let rng = -5..11;
+
+            Scale::List(rng.collect())
+        };
+        let y_scale: Scale<isize> = {
+            let rng = 2..10;
+            Scale::List(rng.collect())
+        };
 
         let l1 = Line::new(p1, None);
         let l2 = Line::new(p2, None);
