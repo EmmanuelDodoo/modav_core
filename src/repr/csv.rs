@@ -120,7 +120,7 @@ impl Cell {
     }
 
     fn validate_type(&self, kind: &ColumnType) -> Result<(), CSVError> {
-        if kind.crosscheck_data(self.data.clone()) {
+        if kind.crosscheck_type(&self.data) {
             return Ok(());
         } else {
             Err(CSVError::InvalidColumnType(format!(
@@ -182,7 +182,7 @@ impl Row {
                 Err(e) => Err(e),
                 Ok(()) => {
                     let header = headers.get(curr.0).unwrap();
-                    if header.crosscheck_data(curr.1.clone().data) {
+                    if header.crosscheck_type(&curr.1.data) {
                         return Ok(());
                     } else {
                         return Err(CSVError::InvalidColumnType(format!(
@@ -201,7 +201,7 @@ impl Row {
                 "Tried to validate out of bounds column".into(),
             )),
             Some(cl) => {
-                if header.crosscheck_data(cl.data.clone()) {
+                if header.crosscheck_type(&cl.data) {
                     Ok(())
                 } else {
                     Err(CSVError::InvalidColumnType(format!(
@@ -464,7 +464,7 @@ impl Sheet {
         })
     }
 
-    pub fn validate_col(&self, col: usize) -> Result<(), CSVError> {
+    fn validate_col(&self, col: usize) -> Result<(), CSVError> {
         let hdr = self
             .headers
             .get(col)
@@ -1142,13 +1142,13 @@ pub mod utils {
         }
     }
 
-    #[derive(Debug, Clone, Default, PartialEq)]
+    #[derive(Debug, Clone, Copy, Default, PartialEq)]
     pub enum ColumnType {
         Text,
         Integer,
         Number,
         Float,
-        Bool,
+        Boolean,
         #[default]
         None,
     }
@@ -1156,11 +1156,11 @@ pub mod utils {
     impl ColumnType {
         /// Returns true if data is equivalent to this column type.
         /// For flexibility reasons, ColumnType::None always returns true
-        pub fn crosscheck_data(&self, data: Data) -> bool {
+        pub fn crosscheck_type(&self, data: &Data) -> bool {
             if let Data::None = data {
                 return true;
             };
-            let conv: ColumnType = data.into();
+            let conv: ColumnType = data.clone().into();
             match self {
                 ColumnType::None => true,
                 _ => &conv == self,
@@ -1175,7 +1175,7 @@ pub mod utils {
                 Data::Float(_) => Self::Float,
                 Data::Number(_) => Self::Number,
                 Data::Integer(_) => Self::Integer,
-                Data::Boolean(_) => Self::Bool,
+                Data::Boolean(_) => Self::Boolean,
                 Data::None => Self::None,
             }
         }
@@ -1188,7 +1188,7 @@ pub mod utils {
                 "{}",
                 match self {
                     Self::None => "No Column Type",
-                    Self::Bool => "Boolean Column Type",
+                    Self::Boolean => "Boolean Column Type",
                     Self::Text => "Text Column Type",
                     Self::Float => "Float Column Type",
                     Self::Integer => "Integer Column Type",
@@ -1215,15 +1215,8 @@ pub mod utils {
 
         /// Returns true if data is equivalent to this column type.
         /// For flexibility reasons, ColumnType::None always returns true
-        pub fn crosscheck_data(&self, data: Data) -> bool {
-            if let Data::None = data {
-                return true;
-            };
-            let conv: ColumnType = data.into();
-            match self.kind {
-                ColumnType::None => true,
-                _ => conv == self.kind,
-            }
+        pub fn crosscheck_type(&self, data: &Data) -> bool {
+            self.kind.crosscheck_type(&data)
         }
     }
 
@@ -1306,6 +1299,7 @@ pub mod utils {
     }
 }
 
+#[allow(unused_variables)]
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
