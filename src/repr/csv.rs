@@ -87,7 +87,7 @@ impl SheetBuilder {
         self
     }
 
-    pub fn build(self) -> Result<Sheet, CSVError> {
+    pub fn build(self) -> Result<Sheet, Error> {
         Sheet::new(
             self.path,
             self.primary,
@@ -119,11 +119,11 @@ impl Cell {
         self.data = new_data;
     }
 
-    fn validate_type(&self, kind: &ColumnType) -> Result<(), CSVError> {
+    fn validate_type(&self, kind: &ColumnType) -> Result<(), Error> {
         if kind.crosscheck_type(&self.data) {
             return Ok(());
         } else {
-            Err(CSVError::InvalidColumnType(format!(
+            Err(Error::InvalidColumnType(format!(
                 "Expected {:?} type but had {:?} type for cell with id: {}",
                 kind, self.data, self.id
             )))
@@ -158,9 +158,9 @@ impl Row {
         self.cells.len() > key
     }
 
-    pub fn is_primary_key_valid(&self) -> Result<(), CSVError> {
+    pub fn is_primary_key_valid(&self) -> Result<(), Error> {
         if !self.is_key_valid(self.primary) {
-            return Err(CSVError::InvalidPrimaryKey(format!(
+            return Err(Error::InvalidPrimaryKey(format!(
                 "Primary key is invalid for row with id: {}",
                 self.id
             )));
@@ -168,9 +168,9 @@ impl Row {
         Ok(())
     }
 
-    fn validate_all_cols(&self, headers: &Vec<ColumnHeader>) -> Result<(), CSVError> {
+    fn validate_all_cols(&self, headers: &Vec<ColumnHeader>) -> Result<(), Error> {
         if self.cells.len() != headers.len() {
-            return Err(CSVError::InvalidColumnLength(format!(
+            return Err(Error::InvalidColumnLength(format!(
                 "Row with id, {}, has unbalanced cells.",
                 self.id
             )));
@@ -185,7 +185,7 @@ impl Row {
                     if header.crosscheck_type(&curr.1.data) {
                         return Ok(());
                     } else {
-                        return Err(CSVError::InvalidColumnType(format!(
+                        return Err(Error::InvalidColumnType(format!(
                             "Expected {:?} type but had {:?} type for cell id: {}, in row id: {}. ",
                             header.kind, curr.1.data, curr.1.id, self.id
                         )));
@@ -194,17 +194,17 @@ impl Row {
             })
     }
 
-    fn validate_col(&self, header: &ColumnHeader, col: usize) -> Result<(), CSVError> {
+    fn validate_col(&self, header: &ColumnHeader, col: usize) -> Result<(), Error> {
         let cell = self.cells.get(col);
         match cell {
-            None => Err(CSVError::InvalidColumnLength(
+            None => Err(Error::InvalidColumnLength(
                 "Tried to validate out of bounds column".into(),
             )),
             Some(cl) => {
                 if header.crosscheck_type(&cl.data) {
                     Ok(())
                 } else {
-                    Err(CSVError::InvalidColumnType(format!(
+                    Err(Error::InvalidColumnType(format!(
                         "Expected cell of {:?} type, but had {:?} type in cell id {} in row id {}",
                         header.kind, cl.data, cl.id, self.id
                     )))
@@ -213,12 +213,12 @@ impl Row {
         }
     }
 
-    pub fn set_primary_key(&mut self, new_primary: usize) -> Result<(), CSVError> {
+    pub fn set_primary_key(&mut self, new_primary: usize) -> Result<(), Error> {
         if new_primary < self.cells.len() {
             self.primary = new_primary;
             Ok(())
         } else {
-            Err(CSVError::InvalidPrimaryKey(
+            Err(Error::InvalidPrimaryKey(
                 "Tried to set primary key to invalid value".into(),
             ))
         }
@@ -343,7 +343,7 @@ impl Sheet {
         trim: bool,
         flexible: bool,
         delimiter: u8,
-    ) -> Result<Self, CSVError> {
+    ) -> Result<Self, Error> {
         let mut counter: usize = 0;
         let mut longest_row = 0;
 
@@ -447,7 +447,7 @@ impl Sheet {
     }
 
     /// Could be expensive
-    pub fn validate(&self) -> Result<(), CSVError> {
+    pub fn validate(&self) -> Result<(), Error> {
         // Validating could be expensive
         Self::is_primary_valid(self)?;
         Self::validate_all_cols(self)?;
@@ -456,7 +456,7 @@ impl Sheet {
     }
 
     /// Checks if the type for each column cell is as expected
-    fn validate_all_cols(sh: &Sheet) -> Result<(), CSVError> {
+    fn validate_all_cols(sh: &Sheet) -> Result<(), Error> {
         let hrs = &sh.headers;
         sh.iter_rows().fold(Ok(()), |acc, curr| match acc {
             Err(e) => Err(e),
@@ -464,11 +464,11 @@ impl Sheet {
         })
     }
 
-    fn validate_col(&self, col: usize) -> Result<(), CSVError> {
+    fn validate_col(&self, col: usize) -> Result<(), Error> {
         let hdr = self
             .headers
             .get(col)
-            .ok_or(CSVError::InvalidColumnLength(format!(
+            .ok_or(Error::InvalidColumnLength(format!(
                 "Tried to access out of range column"
             )))?;
 
@@ -478,12 +478,12 @@ impl Sheet {
         })
     }
 
-    fn is_primary_valid(sh: &Sheet) -> Result<(), CSVError> {
+    fn is_primary_valid(sh: &Sheet) -> Result<(), Error> {
         let len = sh.headers.len();
         let pk = sh.primary_key;
 
         if (len == pk && pk != 0) || (len < pk) {
-            return Err(CSVError::InvalidPrimaryKey(
+            return Err(Error::InvalidPrimaryKey(
                 "Primary key out of column range".into(),
             ));
         }
@@ -494,7 +494,7 @@ impl Sheet {
         })
     }
 
-    fn set_primary_key(&mut self, new_key: usize) -> Result<(), CSVError> {
+    fn set_primary_key(&mut self, new_key: usize) -> Result<(), Error> {
         if self
             .rows
             .iter()
@@ -506,7 +506,7 @@ impl Sheet {
                 .for_each(|row| row.set_primary_key(new_key).unwrap());
             return Ok(());
         }
-        Err(CSVError::InvalidPrimaryKey(
+        Err(Error::InvalidPrimaryKey(
             "Tried setting primary key to invalid value".into(),
         ))
     }
@@ -528,18 +528,18 @@ impl Sheet {
         &self.headers
     }
 
-    pub fn sort_rows(&mut self, col: usize) -> Result<(), CSVError> {
+    pub fn sort_rows(&mut self, col: usize) -> Result<(), Error> {
         let ch = self
             .headers
             .get(col)
-            .ok_or(CSVError::InvalidColumnLength("Column out of range".into()))?;
+            .ok_or(Error::InvalidColumnLength("Column out of range".into()))?;
 
         match ch {
             ColumnHeader {
                 label: _,
                 kind: ColumnType::None,
             } => {
-                return Err(CSVError::InvalidColumnSort(
+                return Err(Error::InvalidColumnSort(
                     "Tried to sort by an unstructured column ".into(),
                 ))
             }
@@ -569,18 +569,18 @@ impl Sheet {
         Ok(())
     }
 
-    pub fn sort_rows_rev(&mut self, col: usize) -> Result<(), CSVError> {
+    pub fn sort_rows_rev(&mut self, col: usize) -> Result<(), Error> {
         let ch = self
             .headers
             .get(col)
-            .ok_or(CSVError::InvalidColumnLength("Column out of range".into()))?;
+            .ok_or(Error::InvalidColumnLength("Column out of range".into()))?;
 
         match ch {
             ColumnHeader {
                 label: _,
                 kind: ColumnType::None,
             } => {
-                return Err(CSVError::InvalidColumnSort(
+                return Err(Error::InvalidColumnSort(
                     "Tried to sort by an unstructured column ".into(),
                 ))
             }
@@ -653,7 +653,7 @@ impl Sheet {
     ///
     /// uniform_type: Whether every non-zeroth column has the same type.
     /// types are lost if false
-    pub fn transpose(self: &Self, initial_header: Option<String>) -> Result<Self, CSVError> {
+    pub fn transpose(self: &Self, initial_header: Option<String>) -> Result<Self, Error> {
         Sheet::validate(&self)?;
 
         let width = self.headers.len();
@@ -669,7 +669,7 @@ impl Sheet {
                     h.kind = ColumnType::Text;
                     h
                 }
-                None => return Err(CSVError::TransposeError("Sheet has missing headers".into())),
+                None => return Err(Error::TransposeError("Sheet has missing headers".into())),
             };
 
             if idx == 0 {
@@ -742,7 +742,7 @@ impl Sheet {
         Ok(sh)
     }
 
-    fn copy_col_data(&self, col: usize) -> Result<Vec<Data>, CSVError> {
+    fn copy_col_data(&self, col: usize) -> Result<Vec<Data>, Error> {
         self.validate_col(col)?;
 
         let data: Vec<Data> = self
@@ -756,14 +756,14 @@ impl Sheet {
         Ok(data)
     }
 
-    fn grab_header(&self, col: usize) -> Result<&ColumnHeader, CSVError> {
-        let hr = self.headers.get(col).ok_or(CSVError::InvalidColumnLength(
+    fn grab_header(&self, col: usize) -> Result<&ColumnHeader, Error> {
+        let hr = self.headers.get(col).ok_or(Error::InvalidColumnLength(
             "Tried accessing an out of bounds Header".into(),
         ))?;
 
         match hr.kind {
             ColumnType::None => {
-                return Err(CSVError::ConversionError(
+                return Err(Error::LineGraphConversionError(
                     "Cannot convert non uniform type column".into(),
                 ))
             }
@@ -771,21 +771,21 @@ impl Sheet {
         }
     }
 
-    fn validate_to_line_graph(&self, label_strat: &LineLabelStrategy) -> Result<(), CSVError> {
+    fn validate_to_line_graph(&self, label_strat: &LineLabelStrategy) -> Result<(), Error> {
         // None type Columns
         self.headers
             .iter()
             .fold(Ok(()), |acc, curr| match (acc, &curr.kind) {
                 (Err(e), _) => return Err(e),
                 (Ok(_), ColumnType::None) => {
-                    return Err(CSVError::ConversionError(
+                    return Err(Error::LineGraphConversionError(
                         "Cannot convert non uniform type column".into(),
                     ));
                 }
                 (Ok(_), _) => Ok(()),
             })?;
 
-        let check_uniform_type = |acc: Result<ColumnType, CSVError>, ct: ColumnType| {
+        let check_uniform_type = |acc: Result<ColumnType, Error>, ct: ColumnType| {
             if let Ok(acc) = acc {
                 match (&acc, &ct) {
                     (ColumnType::None, _) => Ok(ct),
@@ -793,7 +793,7 @@ impl Sheet {
                         if x == y {
                             return Ok(ct);
                         } else {
-                            return Err(CSVError::ConversionError(
+                            return Err(Error::LineGraphConversionError(
                                 "Cannot convert different column types".into(),
                             ));
                         }
@@ -808,7 +808,7 @@ impl Sheet {
         match label_strat {
             LineLabelStrategy::FromCell(idx) => {
                 if idx >= &self.headers.len() {
-                    return Err(CSVError::ConversionError(
+                    return Err(Error::LineGraphConversionError(
                         "Tried to assign invalid column as label".into(),
                     ));
                 }
@@ -848,7 +848,7 @@ impl Sheet {
         label_strat: LineLabelStrategy,
         exclude_row: HashSet<usize>,
         exclude_column: HashSet<usize>,
-    ) -> Result<LineGraph<String, Data>, CSVError> {
+    ) -> Result<LineGraph<String, Data>, Error> {
         self.validate()?;
         self.validate_to_line_graph(&label_strat)?;
 
@@ -897,7 +897,7 @@ impl Sheet {
         };
 
         let lg = LineGraph::new(lines, x_label, y_label, x_scale, y_scale)
-            .map_err(CSVError::LineGraphError)?;
+            .map_err(Error::LineGraphError)?;
 
         Ok(lg)
     }
@@ -906,7 +906,7 @@ impl Sheet {
 impl ToLineGraph for Sheet {
     type X = String;
     type Y = Data;
-    type ErrorType = CSVError;
+    type ErrorType = Error;
 
     fn to_line_graph(
         self: &Self,
@@ -929,61 +929,59 @@ pub mod utils {
 
     use std::{
         cmp::{self, Ordering},
-        default,
-        error::Error,
-        fmt, hash,
+        default, error, fmt, hash,
     };
 
     #[derive(Debug)]
-    pub enum CSVError {
+    pub enum Error {
         InvalidPrimaryKey(String),
         CSVModuleError(csv::Error),
         InvalidColumnType(String),
         InvalidColumnLength(String),
         InvalidColumnSort(String),
-        ConversionError(String),
+        LineGraphConversionError(String),
         LineGraphError(LineGraphError),
         TransposeError(String),
     }
 
-    impl From<csv::Error> for CSVError {
+    impl From<csv::Error> for Error {
         fn from(value: csv::Error) -> Self {
-            CSVError::CSVModuleError(value)
+            Error::CSVModuleError(value)
         }
     }
 
-    impl fmt::Display for CSVError {
+    impl fmt::Display for Error {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
-                CSVError::CSVModuleError(e) => e.fmt(f),
-                CSVError::InvalidColumnLength(s) => {
+                Error::CSVModuleError(e) => e.fmt(f),
+                Error::InvalidColumnLength(s) => {
                     write!(f, "Invalid Column Length: {}", s)
                 }
-                CSVError::InvalidPrimaryKey(s) => {
+                Error::InvalidPrimaryKey(s) => {
                     write!(f, "Primary Key is invalid. {}", s)
                 }
-                CSVError::InvalidColumnType(s) => write!(f, "Invalid Column type: {}", s),
-                CSVError::InvalidColumnSort(s) => write!(f, "Invalid Column Sort: {}", s),
-                CSVError::ConversionError(s) => {
+                Error::InvalidColumnType(s) => write!(f, "Invalid Column type: {}", s),
+                Error::InvalidColumnSort(s) => write!(f, "Invalid Column Sort: {}", s),
+                Error::LineGraphConversionError(s) => {
                     write!(f, "Line Graph Conversion Error: {}", s)
                 }
-                CSVError::LineGraphError(lg) => lg.fmt(f),
-                CSVError::TransposeError(s) => write!(f, "Transposing Error: {}", s),
+                Error::LineGraphError(lg) => lg.fmt(f),
+                Error::TransposeError(s) => write!(f, "Transposing Error: {}", s),
             }
         }
     }
 
-    impl Error for CSVError {
-        fn source(&self) -> Option<&(dyn Error + 'static)> {
+    impl error::Error for Error {
+        fn source(&self) -> Option<&(dyn error::Error + 'static)> {
             match self {
-                CSVError::CSVModuleError(e) => e.source(),
-                CSVError::InvalidColumnLength(_) => None,
-                CSVError::InvalidPrimaryKey(_) => None,
-                CSVError::InvalidColumnType(_) => None,
-                CSVError::InvalidColumnSort(_) => None,
-                CSVError::ConversionError(_) => None,
-                CSVError::LineGraphError(_) => None,
-                CSVError::TransposeError(_) => None,
+                Error::CSVModuleError(e) => e.source(),
+                Error::InvalidColumnLength(_) => None,
+                Error::InvalidPrimaryKey(_) => None,
+                Error::InvalidColumnType(_) => None,
+                Error::InvalidColumnSort(_) => None,
+                Error::LineGraphConversionError(_) => None,
+                Error::LineGraphError(_) => None,
+                Error::TransposeError(_) => None,
             }
         }
     }
@@ -1313,7 +1311,7 @@ mod tests {
         Row::new(sr, 4, 0)
     }
 
-    fn create_air_csv() -> Result<Sheet, CSVError> {
+    fn create_air_csv() -> Result<Sheet, Error> {
         let path: OsString = "./dummies/csv/air.csv".into();
 
         let ct = vec![
