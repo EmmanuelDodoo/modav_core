@@ -319,7 +319,7 @@ pub enum LineLabelStrategy {
     FromCell(usize),
     /// Labels for each line are provided. Excess labels are ignored. Lines with
     /// no labels receive a [`LineLabelStrategy::None`]
-    Provided(String),
+    Provided(Vec<String>),
     /// No labels
     #[default]
     None,

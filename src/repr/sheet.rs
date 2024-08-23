@@ -203,6 +203,7 @@ impl Row {
         label: &LineLabelStrategy,
         x_values: &Vec<String>,
         exclude: &HashSet<usize>,
+        idx: usize,
     ) -> Line<String, Data> {
         let points: Vec<Point<String, Data>> = match label {
             LineLabelStrategy::FromCell(idx) => {
@@ -228,7 +229,7 @@ impl Row {
 
         let lbl: Option<String> = match label {
             LineLabelStrategy::None => None,
-            LineLabelStrategy::Provided(s) => Some(s.clone()),
+            LineLabelStrategy::Provided(labels) => labels.get(idx).cloned(),
             LineLabelStrategy::FromCell(idx) => {
                 if let Some(cell) = self.cells.get(idx.clone()) {
                     Some(cell.data.to_string())
@@ -803,7 +804,9 @@ impl Sheet {
             .iter_rows()
             .enumerate()
             .filter(|(idx, _)| !exclude_row.contains(idx))
-            .map(|(_, rw)| rw.create_line(&label_strat, &x_values, &exclude_column))
+            .map(|(_, row)| row)
+            .enumerate()
+            .map(|(idx, rw)| rw.create_line(&label_strat, &x_values, &exclude_column, idx))
             .collect();
 
         let y_scale: Scale<Data> = {
