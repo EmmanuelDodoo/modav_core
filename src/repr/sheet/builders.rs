@@ -81,6 +81,8 @@ mod tests {
     use std::path::PathBuf;
     use std::usize;
 
+    use crate::models::line::Scale;
+
     use super::super::{
         error::*,
         utils::{
@@ -584,6 +586,53 @@ mod tests {
         {
             println!("{:?}", lg);
         };
+    }
+
+    #[test]
+    fn test_line_scales() {
+        let path: PathBuf = "./dummies/csv/alter.csv".into();
+
+        let sht = SheetBuilder::new(path.clone())
+            .trim(true)
+            .flexible(false)
+            .primary(0)
+            .types(HeaderTypesStrategy::Infer)
+            .labels(HeaderLabelStrategy::ReadLabels)
+            .build()
+            .expect("Building alter csv failure");
+
+        let line = sht
+            .create_line_graph(
+                None,
+                None,
+                LineLabelStrategy::FromCell(0),
+                HashSet::default(),
+                HashSet::default(),
+            )
+            .expect("Building alter csv line graph failure");
+
+        let expected_x_scale = {
+            let values = vec![1958, 1959, 1960];
+
+            Scale::List(values.into_iter().map(|year| year.to_string()).collect())
+        };
+
+        assert_eq!(line.x_scale, expected_x_scale);
+
+        let expected_y_scale = {
+            let values = vec![
+                318, 340, 342, 348, 360, 362, 363, 391, 396, 406, 417, 419, 420, 461, 472,
+            ];
+
+            Scale::List(
+                values
+                    .into_iter()
+                    .map(|value| Into::<Data>::into(value))
+                    .collect(),
+            )
+        };
+
+        assert_eq!(line.y_scale, expected_y_scale);
     }
 
     #[test]

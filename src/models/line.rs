@@ -89,18 +89,14 @@ where
             None => String::new(),
         };
 
-        let x_scale = {
-            match x_scale {
-                // Scale::Range(rng) => Scale::Range(LineGraph::assert_range_scales_x(rng, &lines)?),
-                Scale::List(lst) => Scale::List(LineGraph::assert_list_scales_x(lst, &lines)?),
-            }
+        match &x_scale {
+            // Scale::Range(rng) => Scale::Range(LineGraph::assert_range_scales_x(rng, &lines)?),
+            Scale::List(lst) => LineGraph::assert_list_scales_x(lst, &lines)?,
         };
 
-        let y_scale = {
-            match y_scale {
-                // Scale::Range(rng) => Scale::Range(LineGraph::assert_range_scales_y(rng, &lines)?),
-                Scale::List(lst) => Scale::List(LineGraph::assert_list_scales_y(lst, &lines)?),
-            }
+        match &y_scale {
+            // Scale::Range(rng) => Scale::Range(LineGraph::assert_range_scales_y(rng, &lines)?),
+            Scale::List(lst) => LineGraph::assert_list_scales_y(lst, &lines)?,
         };
 
         Ok(Self {
@@ -166,10 +162,7 @@ where
         }
     }
 
-    fn assert_list_scales_x(
-        lst: Vec<X>,
-        lines: &Vec<Line<X, Y>>,
-    ) -> Result<Vec<X>, LineGraphError> {
+    fn assert_list_scales_x(lst: &Vec<X>, lines: &Vec<Line<X, Y>>) -> Result<(), LineGraphError> {
         // Duplicate check and removal
         let mut lst: Vec<X> = lst.to_vec();
         let set: HashSet<X> = lst.drain(..).collect();
@@ -188,7 +181,7 @@ where
         });
 
         if valid {
-            Ok(set.into_iter().collect())
+            Ok(())
         } else {
             Err(LineGraphError::OutOfRange(
                 "X".into(),
@@ -197,10 +190,7 @@ where
         }
     }
 
-    fn assert_list_scales_y(
-        lst: Vec<Y>,
-        lines: &Vec<Line<X, Y>>,
-    ) -> Result<Vec<Y>, LineGraphError> {
+    fn assert_list_scales_y(lst: &Vec<Y>, lines: &Vec<Line<X, Y>>) -> Result<(), LineGraphError> {
         // Duplicate check and removal
         let mut lst: Vec<Y> = lst.to_vec();
         let set: HashSet<Y> = lst.drain(..).collect();
@@ -218,7 +208,7 @@ where
         });
 
         if valid {
-            Ok(set.into_iter().collect())
+            Ok(())
         } else {
             Err(LineGraphError::OutOfRange(
                 "Y".into(),
