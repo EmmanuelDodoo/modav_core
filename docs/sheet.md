@@ -117,7 +117,7 @@ The `ColumnType` enum represents the value type of `Data` stored within a column
 
 ## 3.1 From CSV
 
-Sheet construction from CSV is handled by the `SheetBuilder` within the csv module.
+Sheet construction from CSV is handled by the `SheetBuilder` within the builders module.
 
 ### Capabilities
 
@@ -179,8 +179,8 @@ The `Error` enum represents the various errors which may occur when the module i
 
 | Variant | Description |
 | --- | --- |
-| CSVModuleError(error) | Represents errors sourcing from the underlying CSV reader. |
-| InvalidPrimaryKey(string) | A row has an out of range primary key. Primary keys are expected to be in the range [0, len(row))  |
+| CSVReaderError(error) | Represents errors sourcing from the underlying CSV reader. |
+| InvalidPrimaryKey(string) | An out of range primary key was encountered. Primary keys are expected to be in the range [0, len(row))  |
 | InvalidColumnType(string) | There’s a mismatch between the stated type of a column and the value contained in one of its cells.  |
 | InvalidColumnLength(string) | A row has too many or too few columns. |
 | InvalidColumnSort(string) | There was an attempt to sort a non-uniform type column |
