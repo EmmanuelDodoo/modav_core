@@ -815,7 +815,10 @@ impl Sheet {
                 .flat_map(|ln| ln.points.iter().map(|pnt| pnt.y.clone()))
                 .collect();
 
-            Scale::List(values.into_iter().collect())
+            let mut values = values.into_iter().collect::<Vec<Data>>();
+            values.sort();
+
+            Scale::List(values)
         };
 
         let x_scale = {
@@ -833,7 +836,11 @@ impl Sheet {
                     .map(|(_, lbl)| lbl)
                     .collect(),
             };
-            Scale::List(values.into_iter().collect())
+
+            let mut values = values.into_iter().collect::<Vec<String>>();
+            values.sort();
+
+            Scale::List(values)
         };
 
         let lg = LineGraph::new(lines, x_label, y_label, x_scale, y_scale)
