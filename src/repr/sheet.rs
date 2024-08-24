@@ -17,6 +17,7 @@ use error::*;
 pub mod utils;
 use utils::*;
 pub mod builders;
+mod tests;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cell {
