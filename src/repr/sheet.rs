@@ -11,7 +11,6 @@ use crate::models::{
     line::{Line, LineGraph},
 };
 use crate::models::{Point, Scale};
-use crate::traits::line::ToLineGraph;
 
 pub mod error;
 use error::*;
@@ -1020,26 +1019,5 @@ impl Sheet {
             .y_label_option(y_label);
 
         Ok(barchart)
-    }
-}
-
-impl ToLineGraph for Sheet {
-    type X = String;
-    type Y = Data;
-    type ErrorType = Error;
-
-    fn to_line_graph(
-        self: &Self,
-        x_label: Option<String>,
-        y_label: Option<String>,
-    ) -> Result<LineGraph<Self::X, Self::Y>> {
-        Sheet::create_line_graph(
-            &self,
-            x_label,
-            y_label,
-            LineLabelStrategy::None,
-            HashSet::new(),
-            HashSet::new(),
-        )
     }
 }
