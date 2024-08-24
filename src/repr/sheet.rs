@@ -6,7 +6,11 @@ use std::{
 
 use csv::Trim;
 
-use crate::models::line::{Line, LineGraph, Point, Scale};
+use crate::models::{
+    bar::{Bar, BarChart},
+    line::{Line, LineGraph},
+};
+use crate::models::{Point, Scale};
 use crate::traits::line::ToLineGraph;
 
 pub mod error;
@@ -701,7 +705,7 @@ impl Sheet {
 
         match hr.kind {
             ColumnType::None => {
-                return Err(Error::LineGraphConversionError(
+                return Err(Error::ConversionError(
                     "Cannot convert non uniform type column".into(),
                 ))
             }
@@ -716,7 +720,7 @@ impl Sheet {
             .fold(Ok(()), |acc, curr| match (acc, &curr.kind) {
                 (Err(e), _) => return Err(e),
                 (Ok(_), ColumnType::None) => {
-                    return Err(Error::LineGraphConversionError(
+                    return Err(Error::ConversionError(
                         "Cannot convert non uniform type column".into(),
                     ));
                 }
@@ -731,7 +735,7 @@ impl Sheet {
                         if x == y {
                             return Ok(ct);
                         } else {
-                            return Err(Error::LineGraphConversionError(
+                            return Err(Error::ConversionError(
                                 "Cannot convert different column types".into(),
                             ));
                         }
@@ -746,7 +750,7 @@ impl Sheet {
         match label_strat {
             LineLabelStrategy::FromCell(idx) => {
                 if idx >= &self.headers.len() {
-                    return Err(Error::LineGraphConversionError(
+                    return Err(Error::ConversionError(
                         "Tried to assign invalid column as label".into(),
                     ));
                 }
@@ -769,6 +773,51 @@ impl Sheet {
                         check_uniform_type(acc, ct.clone())
                     })?;
             }
+        }
+
+        Ok(())
+    }
+
+    fn validate_to_barchart(
+        &self,
+        x_col: usize,
+        y_col: usize,
+        bar_label: &BarChartBarLabels,
+    ) -> Result<()> {
+        if let BarChartBarLabels::FromColumn(idx) = bar_label {
+            if idx >= &self.headers.len() {
+                return Err(Error::ConversionError(
+                    "Bar chart label column out of range".into(),
+                ));
+            }
+        }
+
+        let x_type = self
+            .headers
+            .get(x_col)
+            .ok_or(Error::ConversionError(
+                "Bar chart column out of range".into(),
+            ))?
+            .kind;
+
+        if x_type == ColumnType::None {
+            return Err(Error::ConversionError(
+                "Cannot convert from non-uniform column".into(),
+            ));
+        }
+
+        let y_type = self
+            .headers
+            .get(y_col)
+            .ok_or(Error::ConversionError(
+                "Bar chart column out of range".into(),
+            ))?
+            .kind;
+
+        if y_type == ColumnType::None {
+            return Err(Error::ConversionError(
+                "Cannot convert from non-uniform column".into(),
+            ));
         }
 
         Ok(())
@@ -847,6 +896,130 @@ impl Sheet {
             .map_err(Error::LineGraphError)?;
 
         Ok(lg)
+    }
+
+    pub fn create_bar_chart(
+        self,
+        x_col: usize,
+        y_col: usize,
+        bar_label: BarChartBarLabels,
+        axis_labels: BarChartAxisLabelStrategy,
+        exclude_row: HashSet<usize>,
+    ) -> Result<BarChart<Data, Data>> {
+        self.validate_to_barchart(x_col, y_col, &bar_label)?;
+
+        let x_values = self
+            .rows
+            .iter()
+            .enumerate()
+            .filter(|(idx, _)| !exclude_row.contains(idx))
+            .map(|(_, row)| {
+                row.cells
+                    .get(x_col)
+                    .expect("Bar conversion: All Rows should have the same length")
+                    .data
+                    .clone()
+            });
+
+        let y_values = self
+            .rows
+            .iter()
+            .enumerate()
+            .filter(|(idx, _)| !exclude_row.contains(idx))
+            .map(|(_, row)| {
+                row.cells
+                    .get(y_col)
+                    .expect("Bar conversion: All Rows should have the same length")
+                    .data
+                    .clone()
+            });
+
+        let points = x_values
+            .into_iter()
+            .zip(y_values)
+            .map(|(x, y)| Point::new(x, y));
+
+        let labels: Vec<Option<String>> = match bar_label {
+            BarChartBarLabels::Provided(labels) => labels
+                .into_iter()
+                .map(|label| if label.is_empty() { None } else { Some(label) })
+                .collect(),
+            BarChartBarLabels::FromColumn(ind) => self
+                .rows
+                .iter()
+                .enumerate()
+                .filter(|(idx, _)| !exclude_row.contains(idx))
+                .map(|(_, row)| {
+                    let label = row
+                        .cells
+                        .get(ind)
+                        .expect("Bar conversion: All Rows should have the same length")
+                        .data
+                        .to_string();
+                    Some(label)
+                })
+                .collect(),
+            BarChartBarLabels::None => vec![None; self.rows.len()],
+        };
+
+        let labels = Self::balance_vector(labels, self.rows.len());
+
+        let bars = labels
+            .into_iter()
+            .zip(points)
+            .map(|(label, point)| Bar::new(label, point))
+            .collect::<Vec<Bar<Data, Data>>>();
+
+        let (x_label, y_label) = match axis_labels {
+            BarChartAxisLabelStrategy::Headers => {
+                let x = self
+                    .headers
+                    .get(x_col)
+                    .expect("Bar conversion: Invalid header access")
+                    .label
+                    .clone();
+                let y = self
+                    .headers
+                    .get(y_col)
+                    .expect("Bar conversion: Invalid header access")
+                    .label
+                    .clone();
+
+                (Some(x), Some(y))
+            }
+            BarChartAxisLabelStrategy::Provided { x, y } => (Some(x), Some(y)),
+            BarChartAxisLabelStrategy::None => (None, None),
+        };
+
+        let x_scale = {
+            let values = bars
+                .iter()
+                .map(|bar| bar.point.x.clone())
+                .collect::<HashSet<Data>>();
+
+            let mut values = values.into_iter().collect::<Vec<Data>>();
+            values.sort();
+
+            Scale::List(values)
+        };
+
+        let y_scale = {
+            let values = bars
+                .iter()
+                .map(|bar| bar.point.y.clone())
+                .collect::<HashSet<Data>>();
+
+            let mut values = values.into_iter().collect::<Vec<Data>>();
+            values.sort();
+
+            Scale::List(values)
+        };
+
+        let barchart = BarChart::new(bars, x_scale, y_scale)?
+            .x_label_option(x_label)
+            .y_label_option(y_label);
+
+        Ok(barchart)
     }
 }
 

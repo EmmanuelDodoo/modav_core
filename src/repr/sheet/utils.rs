@@ -338,3 +338,56 @@ impl fmt::Display for LineLabelStrategy {
         )
     }
 }
+
+/// Determines how the axis labels are generated for a bar chart
+#[derive(Debug, Default, Clone, PartialEq)]
+pub enum BarChartAxisLabelStrategy {
+    /// Any corresponding hearders present will serve as the labels for the axis
+    Headers,
+    /// The axis labels are provided.
+    Provided { x: String, y: String },
+    /// No labels are generated
+    #[default]
+    None,
+}
+
+impl fmt::Display for BarChartAxisLabelStrategy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::None => "No labels",
+                Self::Provided { .. } => "Labels provided",
+                Self::Headers => "Use corresponding headers",
+            }
+        )
+    }
+}
+
+/// Determines how the labels for individual bars are generated
+#[derive(Debug, Default, Clone, PartialEq)]
+pub enum BarChartBarLabels {
+    /// No labels generated
+    #[default]
+    None,
+    /// Values from corresponding column used as the labels
+    FromColumn(usize),
+    /// Labels are provided Excess labels are ignored. Lines with
+    /// no labels receive a [`BarChartBarLabels::None`]
+    Provided(Vec<String>),
+}
+
+impl fmt::Display for BarChartBarLabels {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::None => "No labels",
+                Self::Provided(_) => "Labels provided",
+                Self::FromColumn(_) => "Labels from a column",
+            }
+        )
+    }
+}

@@ -1,4 +1,4 @@
-use crate::models::line::utils::LineGraphError;
+use crate::models::{bar::BarChartError, line::LineGraphError};
 use std::{error, fmt};
 
 #[derive(Debug)]
@@ -13,14 +13,31 @@ pub enum Error {
     InvalidColumnLength(String),
     /// Non-uniform column sorting
     InvalidColumnSort(String),
-    LineGraphConversionError(String),
+    /// Error when converting the sheet to another type
+    ConversionError(String),
+    /// Error from creating a new linegraph from sheet
     LineGraphError(LineGraphError),
+    /// Error during a transpose
     TransposeError(String),
+    /// Error from creating a new barchart from sheet
+    BarChartError(BarChartError),
 }
 
 impl From<csv::Error> for Error {
     fn from(value: csv::Error) -> Self {
         Error::CSVReaderError(value)
+    }
+}
+
+impl From<LineGraphError> for Error {
+    fn from(value: LineGraphError) -> Self {
+        Self::LineGraphError(value)
+    }
+}
+
+impl From<BarChartError> for Error {
+    fn from(value: BarChartError) -> Self {
+        Self::BarChartError(value)
     }
 }
 
@@ -36,11 +53,12 @@ impl fmt::Display for Error {
             }
             Error::InvalidColumnType(s) => write!(f, "Invalid Column type: {}", s),
             Error::InvalidColumnSort(s) => write!(f, "Invalid Column Sort: {}", s),
-            Error::LineGraphConversionError(s) => {
-                write!(f, "Line Graph Conversion Error: {}", s)
+            Error::ConversionError(s) => {
+                write!(f, "Conversion Error: {}", s)
             }
             Error::LineGraphError(lg) => lg.fmt(f),
             Error::TransposeError(s) => write!(f, "Transposing Error: {}", s),
+            Error::BarChartError(bar) => bar.fmt(f),
         }
     }
 }
@@ -53,9 +71,10 @@ impl error::Error for Error {
             Error::InvalidPrimaryKey(_) => None,
             Error::InvalidColumnType(_) => None,
             Error::InvalidColumnSort(_) => None,
-            Error::LineGraphConversionError(_) => None,
-            Error::LineGraphError(_) => None,
+            Error::ConversionError(_) => None,
+            Error::LineGraphError(lg) => Some(lg),
             Error::TransposeError(_) => None,
+            Error::BarChartError(bar) => Some(bar),
         }
     }
 }

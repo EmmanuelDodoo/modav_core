@@ -77,17 +77,18 @@ impl SheetBuilder {
 #[allow(unused_variables)]
 #[cfg(test)]
 mod tests {
+    use core::panic;
     use std::collections::HashSet;
     use std::path::PathBuf;
     use std::usize;
 
-    use crate::models::line::Scale;
+    use crate::models::Scale;
 
     use super::super::{
         error::*,
         utils::{
-            ColumnHeader, ColumnType, Data, HeaderLabelStrategy, HeaderTypesStrategy,
-            LineLabelStrategy,
+            BarChartAxisLabelStrategy, BarChartBarLabels, ColumnHeader, ColumnType, Data,
+            HeaderLabelStrategy, HeaderTypesStrategy, LineLabelStrategy,
         },
         Cell, Row, Sheet,
     };
@@ -829,6 +830,154 @@ mod tests {
 
                 let hr5 = sh.get_headers().get(5).unwrap();
                 assert_eq!(ColumnType::Text, hr5.kind);
+            }
+        }
+    }
+
+    #[test]
+    fn test_create_bar_chart() {
+        let path: PathBuf = "./dummies/csv/infer.csv".into();
+
+        let res = SheetBuilder::new(path)
+            .labels(HeaderLabelStrategy::ReadLabels)
+            .trim(true)
+            .types(HeaderTypesStrategy::Infer)
+            .build()
+            .unwrap();
+
+        let barchart = res
+            .clone()
+            .create_bar_chart(
+                1,
+                2,
+                BarChartBarLabels::None,
+                BarChartAxisLabelStrategy::None,
+                HashSet::default(),
+            )
+            .unwrap();
+
+        assert_eq!(barchart.x_label, None);
+        assert_eq!(barchart.y_label, None);
+        assert_eq!(barchart.bars.len(), 3);
+        assert_eq!(barchart.bars.get(1).unwrap().label, None);
+
+        let barchart = res
+            .clone()
+            .create_bar_chart(
+                1,
+                2,
+                BarChartBarLabels::FromColumn(0),
+                BarChartAxisLabelStrategy::Headers,
+                HashSet::from([2]),
+            )
+            .unwrap();
+
+        assert_eq!(barchart.x_label.unwrap(), "Year");
+        assert_eq!(barchart.y_label.unwrap(), "Percentage");
+        assert_eq!(barchart.bars.len(), 2);
+        assert_eq!(barchart.bars.get(1).unwrap().label.clone().unwrap(), "FEB");
+
+        let barchart = res
+            .clone()
+            .create_bar_chart(
+                1,
+                2,
+                //BarChartBarLabels::Provided(vec![String::from("One")]),
+                BarChartBarLabels::Provided(vec![String::from("One")]),
+                BarChartAxisLabelStrategy::Provided {
+                    x: "Xer".into(),
+                    y: "Yer".into(),
+                },
+                HashSet::default(),
+            )
+            .unwrap();
+
+        assert_eq!(barchart.x_label.unwrap(), "Xer");
+        assert_eq!(barchart.y_label.unwrap(), "Yer");
+        assert_eq!(barchart.bars.len(), 3);
+        assert_eq!(barchart.bars.get(0).unwrap().label.clone().unwrap(), "One");
+        assert_eq!(barchart.bars.get(1).unwrap().label, None);
+
+        let barchart = res
+            .clone()
+            .create_bar_chart(
+                1,
+                2,
+                //BarChartBarLabels::Provided(vec![String::from("One")]),
+                BarChartBarLabels::Provided(vec![
+                    String::from("One"),
+                    String::from("Two"),
+                    String::from("Three"),
+                    String::from("Four"),
+                    String::from("Five"),
+                ]),
+                BarChartAxisLabelStrategy::Provided {
+                    x: "Xer".into(),
+                    y: "Yer".into(),
+                },
+                HashSet::default(),
+            )
+            .unwrap();
+
+        assert_eq!(barchart.bars.len(), 3);
+        assert_eq!(
+            barchart.bars.get(2).unwrap().label.clone().unwrap(),
+            "Three"
+        );
+
+        // Non uniform column test
+        let barchart = res.clone().create_bar_chart(
+            4,
+            3,
+            BarChartBarLabels::None,
+            BarChartAxisLabelStrategy::None,
+            HashSet::default(),
+        );
+
+        match barchart {
+            Ok(_) => panic!("Bar chart false success"),
+            Err(e) => {
+                assert_eq!(
+                    e.to_string(),
+                    "Conversion Error: Cannot convert from non-uniform column"
+                );
+            }
+        }
+        //
+        // out of range column test
+        let barchart = res.clone().create_bar_chart(
+            40,
+            3,
+            BarChartBarLabels::None,
+            BarChartAxisLabelStrategy::None,
+            HashSet::default(),
+        );
+
+        match barchart {
+            Ok(_) => panic!("Bar chart false success"),
+            Err(e) => {
+                assert_eq!(
+                    e.to_string(),
+                    "Conversion Error: Bar chart column out of range"
+                );
+            }
+        }
+
+        let barchart = res.clone().create_bar_chart(
+            4,
+            3,
+            BarChartBarLabels::FromColumn(40),
+            BarChartAxisLabelStrategy::None,
+            HashSet::default(),
+        );
+
+        match barchart {
+            Ok(_) => panic!("Bar chart false success"),
+            Err(e) => {
+                assert_eq!(
+                    e.to_string(),
+                    "Conversion Error: Bar chart label column out of range"
+                );
             }
         }
     }

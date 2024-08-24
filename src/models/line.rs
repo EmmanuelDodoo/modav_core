@@ -1,36 +1,12 @@
 use std::{collections::HashSet, fmt::Debug, hash::Hash, ops::Range};
-use utils::*;
+pub use utils::*;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Point<X, Y> {
-    pub x: X,
-    pub y: Y,
-}
+use super::{Point, Scale};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Line<X, Y> {
     pub points: Vec<Point<X, Y>>,
     pub label: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Scale<T>
-where
-    T: Clone + Debug,
-{
-    // Range(Range<T>),
-    List(Vec<T>),
-}
-
-impl<T> Scale<T>
-where
-    T: Clone + Debug,
-{
-    pub fn points(&self) -> Vec<T> {
-        match self {
-            Self::List(lst) => lst.clone(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -44,12 +20,6 @@ where
     pub y_label: String,
     pub x_scale: Scale<X>,
     pub y_scale: Scale<Y>,
-}
-
-impl<X, Y> Point<X, Y> {
-    pub fn new(x: X, y: Y) -> Self {
-        Self { x, y }
-    }
 }
 
 impl<X, Y> Line<X, Y> {
@@ -243,6 +213,8 @@ pub mod utils {
             }
         }
     }
+
+    impl std::error::Error for LineGraphError {}
 }
 
 #[cfg(test)]
@@ -318,25 +290,6 @@ mod line_tests {
         let l2 = Line::new(p2, None);
 
         LineGraph::new(vec![l1, l2], None, None, x_scale, y_scale)
-    }
-
-    #[test]
-    fn test_line_point() {
-        let p1 = create_point(2, 3);
-        assert_eq!(p1.x, 2);
-        assert_eq!(p1.y, 3);
-
-        let p2 = create_point(-4, 0);
-        assert_eq!(p2.x, -4);
-        assert_eq!(p2.y, 0);
-
-        let p3 = create_point("Something", "else");
-        assert_eq!(p3.x, "Something");
-        assert_eq!(p3.y, "else");
-
-        let p4 = create_point(String::from("tired"), 0.50);
-        assert_eq!(p4.x, "tired");
-        assert_eq!(p4.y, 0.50);
     }
 
     #[test]
