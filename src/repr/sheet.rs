@@ -46,7 +46,7 @@ impl Cell {
 
     fn validate_type(&self, kind: &ColumnType) -> Result<()> {
         if kind.crosscheck_type(&self.data) {
-            return Ok(());
+            Ok(())
         } else {
             Err(Error::InvalidColumnType(format!(
                 "Expected {:?} type but had {:?} type for cell with id: {}",
@@ -101,7 +101,7 @@ impl Row {
         Ok(())
     }
 
-    fn validate_all_cols(&self, headers: &Vec<ColumnHeader>) -> Result<()> {
+    fn validate_all_cols(&self, headers: &[ColumnHeader]) -> Result<()> {
         if self.cells.len() != headers.len() {
             return Err(Error::InvalidColumnLength(format!(
                 "Row with id, {}, has unbalanced cells.",
@@ -109,22 +109,17 @@ impl Row {
             )));
         }
 
-        self.iter_cells()
-            .enumerate()
-            .fold(Ok(()), |acc, curr| match acc {
-                Err(e) => Err(e),
-                Ok(()) => {
-                    let header = headers.get(curr.0).unwrap();
-                    if header.crosscheck_type(&curr.1.data) {
-                        return Ok(());
-                    } else {
-                        return Err(Error::InvalidColumnType(format!(
-                            "Expected {:?} type but had {:?} type for cell id: {}, in row id: {}. ",
-                            header.kind, curr.1.data, curr.1.id, self.id
-                        )));
-                    }
-                }
-            })
+        self.iter_cells().enumerate().try_fold((), |_, curr| {
+            let header = headers.get(curr.0).unwrap();
+            if header.crosscheck_type(&curr.1.data) {
+                Ok(())
+            } else {
+                Err(Error::InvalidColumnType(format!(
+                    "Expected {:?} type but had {:?} type for cell id: {}, in row id: {}. ",
+                    header.kind, curr.1.data, curr.1.id, self.id
+                )))
+            }
+        })
     }
 
     fn validate_col(&self, header: &ColumnHeader, col: usize) -> Result<()> {
@@ -205,7 +200,7 @@ impl Row {
     fn create_line(
         &self,
         label: &LineLabelStrategy,
-        x_values: &Vec<String>,
+        x_values: &[String],
         exclude: &HashSet<usize>,
         idx: usize,
     ) -> Line<String, Data> {
@@ -235,11 +230,7 @@ impl Row {
             LineLabelStrategy::None => None,
             LineLabelStrategy::Provided(labels) => labels.get(idx).cloned(),
             LineLabelStrategy::FromCell(idx) => {
-                if let Some(cell) = self.cells.get(idx.clone()) {
-                    Some(cell.data.to_string())
-                } else {
-                    None
-                }
+                self.cells.get(*idx).map(|cell| cell.data.to_string())
             }
         };
         Line::from_points(points, lbl)
@@ -260,19 +251,21 @@ impl Sheet {
     /// A default T is used as padding. Any extras are trimmed
     fn balance_vector<T: Clone + Default>(lst: Vec<T>, size: usize) -> Vec<T> {
         let len = lst.len();
-        if len == size {
-            return lst;
-        } else if len < size {
-            let mut cln = lst.clone();
-            let mut pad = vec![T::default(); size - len];
+        match len {
+            len if len < size => {
+                let mut cln = lst.clone();
+                let mut pad = vec![T::default(); size - len];
 
-            cln.append(&mut pad);
+                cln.append(&mut pad);
 
-            return cln;
-        } else {
-            let mut cln = lst.clone();
-            cln.truncate(size);
-            return cln;
+                cln
+            }
+            len if len < size => {
+                let mut cln = lst.clone();
+                cln.truncate(size);
+                cln
+            }
+            _ => lst,
         }
     }
 
@@ -357,7 +350,7 @@ impl Sheet {
 
         let headers: Vec<ColumnHeader> = labels
             .into_iter()
-            .zip(types.into_iter())
+            .zip(types)
             .map(|(lbl, typ)| ColumnHeader::new(lbl, typ))
             .collect();
 
@@ -368,11 +361,8 @@ impl Sheet {
             primary_key: primary,
         };
 
-        match type_strategy {
-            HeaderTypesStrategy::Infer => {
-                Sheet::infer_col_kinds(&mut sh, longest_row);
-            }
-            _ => {}
+        if type_strategy == HeaderTypesStrategy::Infer {
+            Sheet::infer_col_kinds(&mut sh, longest_row);
         }
 
         sh.validate()?;
@@ -400,24 +390,18 @@ impl Sheet {
     /// Checks if the type for each column cell is as expected
     fn validate_all_cols(sh: &Sheet) -> Result<()> {
         let hrs = &sh.headers;
-        sh.iter_rows().fold(Ok(()), |acc, curr| match acc {
-            Err(e) => Err(e),
-            Ok(()) => curr.validate_all_cols(hrs),
-        })
+
+        sh.iter_rows()
+            .try_fold((), |_, curr| curr.validate_all_cols(hrs))
     }
 
     fn validate_col(&self, col: usize) -> Result<()> {
-        let hdr = self
-            .headers
-            .get(col)
-            .ok_or(Error::InvalidColumnLength(format!(
-                "Tried to access out of range column"
-            )))?;
+        let hdr = self.headers.get(col).ok_or(Error::InvalidColumnLength(
+            "Tried to access out of range column".to_string(),
+        ))?;
 
-        self.iter_rows().fold(Ok(()), |acc, curr| match acc {
-            Err(e) => Err(e),
-            Ok(()) => curr.validate_col(hdr, col),
-        })
+        self.iter_rows()
+            .try_fold((), |_, curr| curr.validate_col(hdr, col))
     }
 
     fn is_primary_valid(sh: &Sheet) -> Result<()> {
@@ -430,18 +414,13 @@ impl Sheet {
             ));
         }
 
-        sh.rows.iter().fold(Ok(()), |acc, curr| match acc {
-            Err(e) => Err(e),
-            Ok(()) => curr.is_primary_key_valid(),
-        })
+        sh.rows
+            .iter()
+            .try_fold((), |_acc, curr| curr.is_primary_key_valid())
     }
 
     fn set_primary_key(&mut self, new_key: usize) -> Result<()> {
-        if self
-            .rows
-            .iter()
-            .fold(true, |acc, curr| acc && curr.is_key_valid(new_key))
-        {
+        if self.rows.iter().all(|curr| curr.is_key_valid(new_key)) {
             self.primary_key = new_key;
             self.rows
                 .iter_mut()
@@ -476,17 +455,15 @@ impl Sheet {
             .get(col)
             .ok_or(Error::InvalidColumnLength("Column out of range".into()))?;
 
-        match ch {
-            ColumnHeader {
-                label: _,
-                kind: ColumnType::None,
-            } => {
-                return Err(Error::InvalidColumnSort(
-                    "Tried to sort by an unstructured column ".into(),
-                ))
-            }
-            _ => {}
-        };
+        if let ColumnHeader {
+            kind: ColumnType::None,
+            ..
+        } = ch
+        {
+            return Err(Error::InvalidColumnSort(
+                "Tried to sort by an unstructured column ".into(),
+            ));
+        }
 
         self.validate_col(col)?;
 
@@ -517,17 +494,15 @@ impl Sheet {
             .get(col)
             .ok_or(Error::InvalidColumnLength("Column out of range".into()))?;
 
-        match ch {
-            ColumnHeader {
-                label: _,
-                kind: ColumnType::None,
-            } => {
-                return Err(Error::InvalidColumnSort(
-                    "Tried to sort by an unstructured column ".into(),
-                ))
-            }
-            _ => {}
-        };
+        if let ColumnHeader {
+            kind: ColumnType::None,
+            ..
+        } = ch
+        {
+            return Err(Error::InvalidColumnSort(
+                "Tried to sort by an unstructured column ".into(),
+            ));
+        }
 
         self.validate_col(col)?;
 
@@ -583,7 +558,7 @@ impl Sheet {
                     .collect()
             })
             .into_iter()
-            .map(|op| op.unwrap_or(ColumnType::default()))
+            .map(|op| op.unwrap_or_default())
             .collect();
 
         sh.headers.iter_mut().zip(col_kinds).for_each(|(hdr, knd)| {
@@ -595,17 +570,17 @@ impl Sheet {
     ///
     /// uniform_type: Whether every non-zeroth column has the same type.
     /// types are lost if false
-    pub fn transpose(self: &Self, initial_header: Option<String>) -> Result<Self> {
-        Sheet::validate(&self)?;
+    pub fn transpose(sheet: &Sheet, initial_header: Option<String>) -> Result<Self> {
+        Sheet::validate(sheet)?;
 
-        let width = self.headers.len();
-        let depth = self.rows.len() + 1;
+        let width = sheet.headers.len();
+        let depth = sheet.rows.len() + 1;
 
         let mut headers: Vec<ColumnHeader> = Vec::new();
         let mut rows: Vec<Vec<Cell>> = Vec::new();
 
         for idx in 0..width {
-            let hr = match self.headers.get(idx) {
+            let hr = match sheet.headers.get(idx) {
                 Some(hdr) => {
                     let mut h = hdr.clone();
                     h.kind = ColumnType::Text;
@@ -619,7 +594,7 @@ impl Sheet {
                     None => hr,
                     Some(lbl) => ColumnHeader::new(lbl.clone(), hr.kind),
                 };
-                let mut hrs = self
+                let mut hrs = sheet
                     .iter_rows()
                     .fold(Vec::<ColumnHeader>::new(), |acc, curr| {
                         let cln = match curr.get_cell_by_index(0).unwrap() {
@@ -639,7 +614,7 @@ impl Sheet {
             } else {
                 let first = Cell::new(0, hr.label.into());
                 let mut rw = vec![first];
-                let mut cls: Vec<Cell> = self
+                let mut cls: Vec<Cell> = sheet
                     .iter_rows()
                     .enumerate()
                     .map(|(id, rw)| {
@@ -704,45 +679,39 @@ impl Sheet {
         ))?;
 
         match hr.kind {
-            ColumnType::None => {
-                return Err(Error::ConversionError(
-                    "Cannot convert non uniform type column".into(),
-                ))
-            }
+            ColumnType::None => Err(Error::ConversionError(
+                "Cannot convert non uniform type column".into(),
+            )),
             _ => Ok(hr),
         }
     }
 
     fn validate_to_line_graph(&self, label_strat: &LineLabelStrategy) -> Result<()> {
         // None type Columns
-        self.headers
-            .iter()
-            .fold(Ok(()), |acc, curr| match (acc, &curr.kind) {
-                (Err(e), _) => return Err(e),
-                (Ok(_), ColumnType::None) => {
-                    return Err(Error::ConversionError(
-                        "Cannot convert non uniform type column".into(),
-                    ));
-                }
-                (Ok(_), _) => Ok(()),
-            })?;
-
-        let check_uniform_type = |acc: Result<ColumnType>, ct: ColumnType| {
-            if let Ok(acc) = acc {
-                match (&acc, &ct) {
-                    (ColumnType::None, _) => Ok(ct),
-                    (x, y) => {
-                        if x == y {
-                            return Ok(ct);
-                        } else {
-                            return Err(Error::ConversionError(
-                                "Cannot convert different column types".into(),
-                            ));
-                        }
-                    }
-                }
+        self.headers.iter().try_fold((), |_acc, curr| {
+            if let ColumnHeader {
+                kind: ColumnType::None,
+                ..
+            } = curr
+            {
+                Err(Error::ConversionError(
+                    "Cannot convert non uniform type column".into(),
+                ))
             } else {
-                return acc;
+                Ok(())
+            }
+        })?;
+
+        let check_uniform_type = |acc: ColumnType, ct: ColumnType| match (&acc, &ct) {
+            (ColumnType::None, _) => Ok(ct),
+            (x, y) => {
+                if x == y {
+                    Ok(ct)
+                } else {
+                    Err(Error::ConversionError(
+                        "Cannot convert different column types".into(),
+                    ))
+                }
             }
         };
 
@@ -760,8 +729,8 @@ impl Sheet {
                     .map(|hrd| &hrd.kind)
                     .enumerate()
                     .filter(|(ind, _)| ind != idx)
-                    .fold(Ok(ColumnType::None), |acc, (_, ct)| {
-                        check_uniform_type(acc, ct.clone())
+                    .try_fold(ColumnType::None, |acc, (_, ct)| {
+                        check_uniform_type(acc, *ct)
                     })?;
             }
 
@@ -769,9 +738,7 @@ impl Sheet {
                 self.headers
                     .iter()
                     .map(|hdr| &hdr.kind)
-                    .fold(Ok(ColumnType::None), |acc, ct| {
-                        check_uniform_type(acc, ct.clone())
-                    })?;
+                    .try_fold(ColumnType::None, |acc, ct| check_uniform_type(acc, *ct))?;
             }
         }
 
@@ -829,7 +796,7 @@ impl Sheet {
     /// exclude_column: The positions of columns to exclude in the
     /// transformation
     pub fn create_line_graph(
-        self: &Self,
+        &self,
         x_label: Option<String>,
         y_label: Option<String>,
         label_strat: LineLabelStrategy,
@@ -840,12 +807,7 @@ impl Sheet {
         self.validate_to_line_graph(&label_strat)?;
 
         let x_values: Vec<String> = {
-            let values: Vec<String> = self
-                .headers
-                .iter()
-                .enumerate()
-                .map(|(_, hdr)| hdr.label.clone())
-                .collect();
+            let values: Vec<String> = self.headers.iter().map(|hdr| hdr.label.clone()).collect();
             values
         };
 

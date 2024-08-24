@@ -20,6 +20,7 @@ pub enum Data {
     None,
 }
 
+#[allow(clippy::non_canonical_partial_ord_impl)]
 impl cmp::PartialOrd for Data {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         match (self, other) {
@@ -54,15 +55,15 @@ impl Eq for Data {}
 impl cmp::Ord for Data {
     fn cmp(&self, other: &Self) -> Ordering {
         if let Some(ord) = self.partial_cmp(other) {
-            return ord;
+            ord
         } else {
             // Special case for NaN. Should only happend when both are f32
             match self {
                 Data::Float(f) => {
                     if f.is_nan() {
-                        return Ordering::Less;
+                        Ordering::Less
                     } else {
-                        return Ordering::Greater;
+                        Ordering::Greater
                     }
                 }
 
@@ -247,7 +248,7 @@ impl ColumnHeader {
     /// Returns true if data is equivalent to this column type.
     /// For flexibility reasons, ColumnType::None always returns true
     pub fn crosscheck_type(&self, data: &Data) -> bool {
-        self.kind.crosscheck_type(&data)
+        self.kind.crosscheck_type(data)
     }
 }
 

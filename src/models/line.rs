@@ -49,15 +49,9 @@ where
         x_scale: Scale<X>,
         y_scale: Scale<Y>,
     ) -> Result<Self, LineGraphError> {
-        let x_label = match x_label {
-            Some(label) => label,
-            None => String::new(),
-        };
+        let x_label = x_label.unwrap_or_default();
 
-        let y_label = match y_label {
-            Some(label) => label,
-            None => String::new(),
-        };
+        let y_label = y_label.unwrap_or_default();
 
         match &x_scale {
             // Scale::Range(rng) => Scale::Range(LineGraph::assert_range_scales_x(rng, &lines)?),
@@ -80,7 +74,7 @@ where
 
     fn assert_range_scales_x(
         rng: Range<X>,
-        lines: &Vec<Line<X, Y>>,
+        lines: &[Line<X, Y>],
     ) -> Result<Range<X>, LineGraphError> {
         let rng = rng.start..rng.end;
 
@@ -108,7 +102,7 @@ where
 
     fn assert_range_scales_y(
         rng: Range<Y>,
-        lines: &Vec<Line<X, Y>>,
+        lines: &[Line<X, Y>],
     ) -> Result<Range<Y>, LineGraphError> {
         let rng = rng.start..rng.end;
         let mut invalid: Option<Y> = None;
@@ -132,7 +126,7 @@ where
         }
     }
 
-    fn assert_list_scales_x(lst: &Vec<X>, lines: &Vec<Line<X, Y>>) -> Result<(), LineGraphError> {
+    fn assert_list_scales_x(lst: &[X], lines: &[Line<X, Y>]) -> Result<(), LineGraphError> {
         // Duplicate check and removal
         let mut lst: Vec<X> = lst.to_vec();
         let set: HashSet<X> = lst.drain(..).collect();
@@ -160,7 +154,7 @@ where
         }
     }
 
-    fn assert_list_scales_y(lst: &Vec<Y>, lines: &Vec<Line<X, Y>>) -> Result<(), LineGraphError> {
+    fn assert_list_scales_y(lst: &[Y], lines: &[Line<X, Y>]) -> Result<(), LineGraphError> {
         // Duplicate check and removal
         let mut lst: Vec<Y> = lst.to_vec();
         let set: HashSet<Y> = lst.drain(..).collect();

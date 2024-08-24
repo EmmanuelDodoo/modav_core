@@ -71,7 +71,7 @@ where
         })
     }
 
-    fn assert_list_scales_y(lst: &Vec<Y>, bars: &Vec<Bar<X, Y>>) -> Result<(), BarChartError> {
+    fn assert_list_scales_y(lst: &[Y], bars: &[Bar<X, Y>]) -> Result<(), BarChartError> {
         // Duplicate check and removal
         let mut lst: Vec<Y> = lst.to_vec();
         let set: HashSet<Y> = lst.drain(..).collect();
@@ -85,9 +85,9 @@ where
 
             if !set.contains(&curr.point.y) {
                 invalid = Some(curr.point.y.clone());
-                acc && false
+                false
             } else {
-                acc && true
+                true
             }
         });
 
@@ -101,7 +101,7 @@ where
         }
     }
 
-    fn assert_list_scales_x(lst: &Vec<X>, bars: &Vec<Bar<X, Y>>) -> Result<(), BarChartError> {
+    fn assert_list_scales_x(lst: &[X], bars: &[Bar<X, Y>]) -> Result<(), BarChartError> {
         // Duplicate check and removal
         let mut lst: Vec<X> = lst.to_vec();
         let set: HashSet<X> = lst.drain(..).collect();
@@ -115,9 +115,9 @@ where
 
             if !set.contains(&curr.point.x) {
                 invalid = Some(curr.point.x.clone());
-                acc && false
+                false
             } else {
-                acc && true
+                true
             }
         });
 
