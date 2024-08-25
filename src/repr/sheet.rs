@@ -959,10 +959,7 @@ impl Sheet {
                 .map(|bar| bar.point.x.clone())
                 .collect::<HashSet<Data>>();
 
-            let mut values = values.into_iter().collect::<Vec<Data>>();
-            values.sort();
-
-            Scale::List(values)
+            Scale::List(values.into_iter().collect())
         };
 
         let y_scale = {
