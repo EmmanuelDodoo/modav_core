@@ -6,7 +6,7 @@ use std::{
 
 use super::{Point, Scale};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Bar<X, Y> {
     pub label: Option<String>,
     pub point: Point<X, Y>,
@@ -30,7 +30,7 @@ impl<X, Y> Bar<X, Y> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct BarChart<X, Y>
 where
     X: Clone + Debug,

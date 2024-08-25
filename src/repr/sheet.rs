@@ -13,9 +13,9 @@ use crate::models::{
 use crate::models::{Point, Scale};
 
 pub mod error;
-use error::*;
+pub use error::*;
 pub mod utils;
-use utils::*;
+pub use utils::*;
 pub mod builders;
 mod tests;
 
