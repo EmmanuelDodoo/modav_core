@@ -983,7 +983,10 @@ impl Sheet {
                 .map(|bar| bar.point.x.clone())
                 .collect::<HashSet<Data>>();
 
-            Scale::List(values.into_iter().collect())
+            let mut values = values.into_iter().collect::<Vec<Data>>();
+            values.sort();
+
+            Scale::List(values)
         };
 
         let y_scale = {
