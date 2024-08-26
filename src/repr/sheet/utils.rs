@@ -261,7 +261,7 @@ impl default::Default for ColumnHeader {
     }
 }
 
-/// Determines how headers for a [`Sheet`] are created
+/// Determines how headers for a `Sheet` are created
 #[derive(Debug, Clone, PartialEq, Default)]
 pub enum HeaderLabelStrategy {
     #[default]

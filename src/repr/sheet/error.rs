@@ -79,5 +79,5 @@ impl error::Error for Error {
     }
 }
 
-/// A short hand alias for [`Sheet`] error results
+/// A short hand alias for `Sheet` error results
 pub type Result<T> = core::result::Result<T, Error>;
