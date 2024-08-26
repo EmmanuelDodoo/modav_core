@@ -39,6 +39,10 @@ impl Cell {
         &mut self.data
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.data == Data::None
+    }
+
     /// Modifies the data in this cell
     pub fn set_data(&mut self, new_data: Data) {
         self.data = new_data;
@@ -150,6 +154,10 @@ impl Row {
                 "Tried to set primary key to invalid value".into(),
             ))
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.cells.iter().all(|cell| cell.is_empty())
     }
 
     pub fn iter_cells(&self) -> Iter<'_, Cell> {
@@ -376,6 +384,10 @@ impl Sheet {
 
     pub fn get_row_by_id(&self, id: usize) -> Option<&Row> {
         self.rows.iter().find(|row| row.id == id)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.rows.iter().all(|row| row.is_empty())
     }
 
     /// Could be expensive
@@ -806,6 +818,12 @@ impl Sheet {
         self.validate()?;
         self.validate_to_line_graph(&label_strat)?;
 
+        if self.is_empty() {
+            return Err(Error::ConversionError(
+                "Cannot convert an empty sheet".into(),
+            ));
+        }
+
         let x_values: Vec<String> = {
             let values: Vec<String> = self.headers.iter().map(|hdr| hdr.label.clone()).collect();
             values
@@ -869,6 +887,12 @@ impl Sheet {
         exclude_row: HashSet<usize>,
     ) -> Result<BarChart<Data, Data>> {
         self.validate_to_barchart(x_col, y_col, &bar_label)?;
+
+        if self.is_empty() {
+            return Err(Error::ConversionError(
+                "Cannot convert an empty sheet".into(),
+            ));
+        }
 
         let x_values = self
             .rows
