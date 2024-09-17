@@ -1,7 +1,7 @@
 #![allow(unused_variables)]
 #![cfg(test)]
 use core::panic;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::usize;
 
@@ -13,6 +13,7 @@ use super::{
     utils::{
         BarChartAxisLabelStrategy, BarChartBarLabels, ColumnHeader, ColumnType, Data,
         HeaderLabelStrategy, HeaderTypesStrategy, LineLabelStrategy,
+        StackedBarChartAxisLabelStrategy,
     },
     Cell, Row, Sheet,
 };
@@ -896,4 +897,151 @@ fn test_create_bar_chart() {
             );
         }
     }
+}
+
+#[test]
+fn test_stacked_bar_char() {
+    let path: PathBuf = "./dummies/csv/stacked.csv".into();
+
+    let res = SheetBuilder::new(path)
+        .labels(HeaderLabelStrategy::ReadLabels)
+        .trim(true)
+        .types(HeaderTypesStrategy::Infer)
+        .build()
+        .unwrap();
+
+    let labels = HashSet::from([
+        String::from("Soda"),
+        String::from("Chocolate"),
+        String::from("Coffee"),
+        String::from("Ice cream"),
+    ]);
+
+    let mut stacked = res
+        .clone()
+        .create_stacked_bar_chart(0, [1, 2, 3, 4], StackedBarChartAxisLabelStrategy::None)
+        .unwrap();
+
+    assert_eq!(stacked.x_axis, None);
+    assert_eq!(stacked.y_axis, None);
+    assert!(&stacked
+        .bars
+        .iter()
+        .all(|bar| { bar.fractions.keys().all(|key| labels.contains(key)) }));
+    assert_eq!(stacked.bars.get(1).unwrap().point.y, 19.into());
+    assert_eq!(stacked.bars.len(), 7);
+    assert!(!stacked.has_negatives);
+    assert!(!stacked.has_true_negatives());
+    stacked.filter_negatives();
+    assert!(!stacked.has_negatives);
+    assert!(!stacked.has_true_negatives());
+    stacked.filter_positives();
+    assert_eq!(stacked.bars.len(), 0);
+    assert!(!stacked.has_positives);
+    assert!(!stacked.has_true_positives());
+    assert_eq!(&labels, &stacked.labels);
+
+    let stacked = res
+        .clone()
+        .create_stacked_bar_chart(
+            0,
+            [1, 4],
+            StackedBarChartAxisLabelStrategy::Header("Total".into()),
+        )
+        .unwrap();
+
+    assert_eq!(stacked.x_axis.unwrap(), "Day of Week");
+    assert_eq!(stacked.y_axis.unwrap(), "Total");
+    assert_eq!(stacked.bars.get(1).unwrap().point.y, Data::Integer(16));
+    assert!(!stacked.bars.get(1).unwrap().is_negative);
+
+    let fraction = HashMap::from([
+        (String::from("Coffee"), (7 as f64) / (16 as f64)),
+        (String::from("Chocolate"), (6 as f64) / (16 as f64)),
+        (String::from("Soda"), (3 as f64) / (16 as f64)),
+        (String::from("Ice cream"), (0 as f64) / (16 as f64)),
+    ]);
+    let stacked = res
+        .clone()
+        .create_stacked_bar_chart(
+            0,
+            [1, 2, 3, 4],
+            StackedBarChartAxisLabelStrategy::Provided {
+                x: "Some X".into(),
+                y: "Some Y".into(),
+            },
+        )
+        .unwrap();
+
+    assert_eq!(stacked.x_axis.unwrap(), "Some X");
+    assert_eq!(stacked.y_axis.unwrap(), "Some Y");
+    assert_eq!(stacked.bars.get(3).unwrap().fractions, fraction);
+
+    let stacked = res
+        .create_stacked_bar_chart(
+            0,
+            [1, 2, 3, 4],
+            StackedBarChartAxisLabelStrategy::Provided {
+                x: "Some X".into(),
+                y: "Some Y".into(),
+            },
+        )
+        .unwrap();
+
+    assert_eq!(stacked.bars.get(1).unwrap().point.x, "Tuesday".into());
+    let mut temp = stacked_helper(
+        &stacked.bars.get(3).unwrap().point.y,
+        &stacked.bars.get(3).unwrap().fractions,
+    );
+    temp.sort();
+    assert_eq!(
+        temp,
+        vec![
+            Data::Integer(0),
+            Data::Integer(3),
+            Data::Integer(6),
+            Data::Integer(7)
+        ]
+    );
+
+    let path: PathBuf = "./dummies/csv/stacked_neg.csv".into();
+
+    let res = SheetBuilder::new(path)
+        .labels(HeaderLabelStrategy::ReadLabels)
+        .trim(true)
+        .types(HeaderTypesStrategy::Infer)
+        .build()
+        .unwrap();
+
+    let stacked = res
+        .clone()
+        .create_stacked_bar_chart(0, [1, 2, 3, 4], StackedBarChartAxisLabelStrategy::None)
+        .unwrap();
+
+    assert!(stacked.has_true_negatives());
+    assert!(stacked.has_negatives);
+    assert!(stacked.has_positives);
+    assert!(stacked.has_true_positives());
+
+    assert!(stacked.bars.get(0).unwrap().is_empty());
+    assert_eq!(stacked.bars.get(0).unwrap().point.y, Data::Integer(0));
+    assert_eq!(
+        stacked.bars.get(2).unwrap().point.x,
+        Data::Text("Tuesday".into())
+    );
+    assert_eq!(stacked.bars.get(2).unwrap().point.y, Data::Integer(-10));
+    assert_eq!(stacked.bars.get(4).unwrap().point.y, Data::Integer(-18));
+    assert_eq!(stacked.bars.len(), 9);
+}
+
+fn stacked_helper(total: &Data, fractions: &HashMap<String, f64>) -> Vec<Data> {
+    fractions
+        .values()
+        .into_iter()
+        .map(|val| match total {
+            Data::Integer(i) => (*val * (*i as f64)) as i32,
+            _ => panic!("Stacked Bar Chart test helper panic"),
+        })
+        .map(|val| Data::Integer(val))
+        .collect()
 }

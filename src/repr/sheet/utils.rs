@@ -20,6 +20,18 @@ pub enum Data {
     None,
 }
 
+#[allow(dead_code)]
+impl Data {
+    pub(crate) fn is_negative(&self) -> bool {
+        match self {
+            Data::Number(num) => *num < 0,
+            Data::Float(float) => *float < 0.0,
+            Data::Integer(int) => *int < 0,
+            _ => false,
+        }
+    }
+}
+
 #[allow(clippy::non_canonical_partial_ord_impl)]
 impl cmp::PartialOrd for Data {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
@@ -388,6 +400,32 @@ impl fmt::Display for BarChartBarLabels {
                 Self::None => "No labels",
                 Self::Provided(_) => "Labels provided",
                 Self::FromColumn(_) => "Labels from a column",
+            }
+        )
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq)]
+pub enum StackedBarChartAxisLabelStrategy {
+    /// The y axis label is provided, while the header for the x column is used
+    /// as the x axis label
+    Header(String),
+    /// Both axis labels are provided
+    Provided { x: String, y: String },
+    /// No labels for both axis
+    #[default]
+    None,
+}
+
+impl fmt::Display for StackedBarChartAxisLabelStrategy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Self::None => "No labels",
+                Self::Provided { .. } => "Both Axis labels provided",
+                Self::Header(_) => "Y axis provided",
             }
         )
     }

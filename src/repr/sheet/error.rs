@@ -1,4 +1,4 @@
-use crate::models::{bar::BarChartError, line::LineGraphError};
+use crate::models::{bar::BarChartError, line::LineGraphError, stacked_bar::StackedBarChartError};
 use std::{error, fmt};
 
 #[derive(Debug)]
@@ -21,6 +21,8 @@ pub enum Error {
     TransposeError(String),
     /// Error from creating a new barchart from sheet
     BarChartError(BarChartError),
+    /// Error from creating a new stacked barchart from sheet
+    StackedBarChart(StackedBarChartError),
 }
 
 impl From<csv::Error> for Error {
@@ -38,6 +40,12 @@ impl From<LineGraphError> for Error {
 impl From<BarChartError> for Error {
     fn from(value: BarChartError) -> Self {
         Self::BarChartError(value)
+    }
+}
+
+impl From<StackedBarChartError> for Error {
+    fn from(value: StackedBarChartError) -> Self {
+        Self::StackedBarChart(value)
     }
 }
 
@@ -59,6 +67,7 @@ impl fmt::Display for Error {
             Error::LineGraphError(lg) => lg.fmt(f),
             Error::TransposeError(s) => write!(f, "Transposing Error: {}", s),
             Error::BarChartError(bar) => bar.fmt(f),
+            Error::StackedBarChart(bar) => bar.fmt(f),
         }
     }
 }
@@ -75,6 +84,7 @@ impl error::Error for Error {
             Error::LineGraphError(lg) => Some(lg),
             Error::TransposeError(_) => None,
             Error::BarChartError(bar) => Some(bar),
+            Error::StackedBarChart(bar) => Some(bar),
         }
     }
 }
