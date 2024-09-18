@@ -235,14 +235,20 @@ impl Row {
                 .collect(),
         };
 
-        let lbl: Option<String> = match label {
-            LineLabelStrategy::None => None,
-            LineLabelStrategy::Provided(labels) => labels.get(idx).cloned(),
+        match label {
+            LineLabelStrategy::None => Line::from_points(points),
+            LineLabelStrategy::Provided(labels) => match labels.get(idx).cloned() {
+                Some(label) => Line::from_points(points).label(label),
+                None => Line::from_points(points),
+            },
             LineLabelStrategy::FromCell(idx) => {
-                self.cells.get(*idx).map(|cell| cell.data.to_string())
+                let label = self.cells.get(*idx).map(|cell| cell.data.to_string());
+                match label {
+                    Some(label) => Line::from_points(points).label(label),
+                    None => Line::from_points(points),
+                }
             }
-        };
-        Line::from_points(points, lbl)
+        }
     }
 
     fn create_stacked_bar_chart(
@@ -1128,29 +1134,11 @@ impl Sheet {
         let bars = labels
             .into_iter()
             .zip(points)
-            .map(|(label, point)| Bar::new(label, point))
+            .map(|(label, point)| match label {
+                Some(label) => Bar::new(label, point),
+                None => Bar::from_point(point),
+            })
             .collect::<Vec<Bar<Data, Data>>>();
-
-        let (x_label, y_label) = match axis_labels {
-            BarChartAxisLabelStrategy::Headers => {
-                let x = self
-                    .headers
-                    .get(x_col)
-                    .expect("Bar conversion: Invalid header access")
-                    .label
-                    .clone();
-                let y = self
-                    .headers
-                    .get(y_col)
-                    .expect("Bar conversion: Invalid header access")
-                    .label
-                    .clone();
-
-                (Some(x), Some(y))
-            }
-            BarChartAxisLabelStrategy::Provided { x, y } => (Some(x), Some(y)),
-            BarChartAxisLabelStrategy::None => (None, None),
-        };
 
         let x_scale = {
             let values = bars
@@ -1176,11 +1164,28 @@ impl Sheet {
             Scale::List(values)
         };
 
-        let barchart = BarChart::new(bars, x_scale, y_scale)?
-            .x_label_option(x_label)
-            .y_label_option(y_label);
+        let barchart = BarChart::new(bars, x_scale, y_scale)?;
 
-        Ok(barchart)
+        match axis_labels {
+            BarChartAxisLabelStrategy::Headers => {
+                let x = self
+                    .headers
+                    .get(x_col)
+                    .expect("Bar conversion: Invalid header access")
+                    .label
+                    .clone();
+                let y = self
+                    .headers
+                    .get(y_col)
+                    .expect("Bar conversion: Invalid header access")
+                    .label
+                    .clone();
+
+                Ok(barchart.x_label(x).y_label(y))
+            }
+            BarChartAxisLabelStrategy::Provided { x, y } => Ok(barchart.x_label(x).y_label(y)),
+            BarChartAxisLabelStrategy::None => Ok(barchart),
+        }
     }
 
     pub fn create_stacked_bar_chart(

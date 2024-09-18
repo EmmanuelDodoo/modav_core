@@ -14,8 +14,11 @@ pub struct Bar<X = Data, Y = Data> {
 }
 
 impl<X, Y> Bar<X, Y> {
-    pub fn new(label: Option<String>, point: Point<X, Y>) -> Self {
-        Self { point, label }
+    pub fn new(label: impl Into<String>, point: impl Into<Point<X, Y>>) -> Self {
+        Self {
+            point: point.into(),
+            label: Some(label.into()),
+        }
     }
 
     pub fn from_point(point: impl Into<Point<X, Y>>) -> Self {
@@ -134,16 +137,6 @@ where
 
     pub fn x_label(mut self, label: impl Into<String>) -> Self {
         self.x_label = Some(label.into());
-        self
-    }
-
-    pub fn x_label_option(mut self, label: Option<String>) -> Self {
-        self.x_label = label;
-        self
-    }
-
-    pub fn y_label_option(mut self, label: Option<String>) -> Self {
-        self.y_label = label;
         self
     }
 

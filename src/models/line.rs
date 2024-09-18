@@ -10,6 +10,28 @@ pub struct Line<X = Data, Y = Data> {
     pub label: Option<String>,
 }
 
+impl<X, Y> Line<X, Y> {
+    pub fn new(points: Vec<(X, Y)>) -> Self {
+        let points = points.into_iter().map(|(x, y)| Point::new(x, y));
+        Self {
+            points: points.collect(),
+            label: None,
+        }
+    }
+
+    pub fn from_points(points: impl IntoIterator<Item = Point<X, Y>>) -> Self {
+        Self {
+            points: points.into_iter().collect(),
+            label: None,
+        }
+    }
+
+    pub fn label(mut self, label: impl Into<String>) -> Self {
+        self.label = Some(label.into());
+        self
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct LineGraph<X = Data, Y = Data>
 where
@@ -21,20 +43,6 @@ where
     pub y_label: String,
     pub x_scale: Scale<X>,
     pub y_scale: Scale<Y>,
-}
-
-impl<X, Y> Line<X, Y> {
-    pub fn new(points: Vec<(X, Y)>, label: Option<String>) -> Self {
-        let points = points.into_iter().map(|(x, y)| Point::new(x, y));
-        Self {
-            points: points.collect(),
-            label,
-        }
-    }
-
-    pub fn from_points(points: Vec<Point<X, Y>>, label: Option<String>) -> Self {
-        Self { points, label }
-    }
 }
 
 #[allow(dead_code)]
@@ -220,18 +228,18 @@ mod line_tests {
         Point::new(x, y)
     }
 
-    fn create_line_from_points(xs: Vec<&str>, label: Option<String>) -> Line<usize, &str> {
+    fn create_line_from_points(xs: Vec<&str>, label: impl Into<String>) -> Line<usize, &str> {
         let points: Vec<Point<usize, &str>> = xs
             .into_iter()
             .enumerate()
             .map(|(i, x)| create_point(i, x))
             .collect();
 
-        Line::from_points(points, label)
+        Line::from_points(points).label(label)
     }
 
-    fn create_line_from_new(xs: Vec<(usize, &str)>, label: Option<String>) -> Line<usize, &str> {
-        Line::new(xs, label)
+    fn create_line_from_new(xs: Vec<(usize, &str)>, label: impl Into<String>) -> Line<usize, &str> {
+        Line::new(xs).label(label)
     }
 
     fn create_graph<'a>() -> LineGraph<usize, &'a str> {
@@ -244,8 +252,8 @@ mod line_tests {
             (50, "five"),
         ];
 
-        let pnt1 = create_line_from_new(p2, Some("Deutsch".into()));
-        let pnt2 = create_line_from_points(p1, Some("English".into()));
+        let pnt1 = create_line_from_new(p2, "Deutsch");
+        let pnt2 = create_line_from_points(p1, "English");
 
         // let x_scale: Scale<usize> = Scale::Range(0..60);
         let x_scale: Scale<usize> = {
@@ -281,8 +289,8 @@ mod line_tests {
             Scale::List(rng.collect())
         };
 
-        let l1 = Line::new(p1, None);
-        let l2 = Line::new(p2, None);
+        let l1 = Line::new(p1);
+        let l2 = Line::new(p2);
 
         LineGraph::new(vec![l1, l2], None, None, x_scale, y_scale)
     }
@@ -290,7 +298,7 @@ mod line_tests {
     #[test]
     fn test_line_line() {
         let pts = vec!["one", "two", "three"];
-        let line = create_line_from_points(pts, Some("Line 1".into()));
+        let line = create_line_from_points(pts, "Line 1");
 
         assert_eq!(line.label, Some(String::from("Line 1")));
         let temp: Vec<&str> = line.points.iter().fold(vec![], |acc, curr| {
