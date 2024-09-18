@@ -1,7 +1,8 @@
+use crate::repr::Data;
 use std::fmt::Debug;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Point<X, Y> {
+pub struct Point<X = Data, Y = Data> {
     pub x: X,
     pub y: Y,
 }

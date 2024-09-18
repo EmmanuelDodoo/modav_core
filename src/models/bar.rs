@@ -5,9 +5,10 @@ use std::{
 };
 
 use super::{Point, Scale};
+use crate::repr::Data;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Bar<X, Y> {
+pub struct Bar<X = Data, Y = Data> {
     pub label: Option<String>,
     pub point: Point<X, Y>,
 }
@@ -31,7 +32,7 @@ impl<X, Y> Bar<X, Y> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct BarChart<X, Y>
+pub struct BarChart<X = Data, Y = Data>
 where
     X: Clone + Debug,
     Y: Clone + Debug,

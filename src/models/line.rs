@@ -1,16 +1,17 @@
+use crate::repr::Data;
 use std::{collections::HashSet, fmt::Debug, hash::Hash, ops::Range};
 pub use utils::*;
 
 use super::{Point, Scale};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Line<X, Y> {
+pub struct Line<X = Data, Y = Data> {
     pub points: Vec<Point<X, Y>>,
     pub label: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct LineGraph<X, Y>
+pub struct LineGraph<X = Data, Y = Data>
 where
     X: Clone + Debug,
     Y: Clone + Debug,
