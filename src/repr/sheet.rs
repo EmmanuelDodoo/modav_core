@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     path::PathBuf,
     slice::{Iter, IterMut},
 };
@@ -9,6 +9,7 @@ use csv::Trim;
 use crate::models::{
     bar::{Bar, BarChart},
     line::{Line, LineGraph},
+    stacked_bar::{StackedBar, StackedBarChart},
 };
 use crate::models::{Point, Scale};
 
@@ -242,6 +243,136 @@ impl Row {
             }
         };
         Line::from_points(points, lbl)
+    }
+
+    fn create_stacked_bar_chart(
+        &self,
+        x_col: usize,
+        cols: &[usize],
+        labels: &[String],
+    ) -> Result<[(StackedBar, Data); 2]> {
+        let x = self
+            .cells
+            .get(x_col)
+            .cloned()
+            .expect("Row create stacked bar: Validations failed.")
+            .data;
+
+        let mut pos = Vec::with_capacity(cols.len());
+        let mut neg = Vec::with_capacity(cols.len());
+
+        for (col, label) in cols.iter().zip(labels) {
+            let data = self
+                .cells
+                .get(*col)
+                .cloned()
+                .expect("Row create stacked bar: Validations failed")
+                .data;
+
+            if data.is_negative() {
+                neg.push((label.clone(), data));
+            } else {
+                pos.push((label.clone(), data));
+            }
+        }
+
+        let pos_total = pos
+            .iter()
+            .map(|(_, data)| data)
+            .fold(Data::None, |acc, curr| match (acc, curr) {
+                (Data::None, Data::Integer(i)) => Data::Integer(*i),
+                (Data::None, Data::Float(f)) => Data::Float(*f),
+                (Data::None, Data::Number(n)) => Data::Number(*n),
+                (Data::Integer(x), Data::Integer(y)) => Data::Integer(x + y),
+                (Data::Number(x), Data::Number(y)) => Data::Number(x + y),
+                (Data::Float(x), Data::Float(y)) => Data::Float(x + y),
+                _ => Data::None,
+            });
+
+        let neg_total = neg
+            .iter()
+            .map(|(_, data)| data)
+            .fold(Data::None, |acc, curr| match (acc, curr) {
+                (Data::None, Data::Integer(i)) => Data::Integer(*i),
+                (Data::None, Data::Float(f)) => Data::Float(*f),
+                (Data::None, Data::Number(n)) => Data::Number(*n),
+                (Data::Integer(x), Data::Integer(y)) => Data::Integer(x + y),
+                (Data::Number(x), Data::Number(y)) => Data::Number(x + y),
+                (Data::Float(x), Data::Float(y)) => Data::Float(x + y),
+                _ => Data::None,
+            });
+
+        let pos_fractions = pos
+            .into_iter()
+            .map(|(label, data)| {
+                let fraction = match (&pos_total, data) {
+                    (Data::Integer(t), Data::Integer(i)) => {
+                        if *t == 0 {
+                            0.0
+                        } else {
+                            (i as f64) / (*t as f64)
+                        }
+                    }
+                    (Data::Number(t), Data::Number(n)) => {
+                        if *t == 0 {
+                            0.0
+                        } else {
+                            (n as f64) / (*t as f64)
+                        }
+                    }
+                    (Data::Float(t), Data::Float(f)) => {
+                        if *t == 0.0 {
+                            0.0
+                        } else {
+                            (f as f64) / (*t as f64)
+                        }
+                    }
+                    _ => panic!("Row create stacked bar: So many validations failed"),
+                };
+                (label, fraction)
+            })
+            .collect::<HashMap<String, f64>>();
+
+        let neg_fractions = neg
+            .into_iter()
+            .map(|(label, data)| {
+                let fraction = match (&neg_total, data) {
+                    (Data::Integer(t), Data::Integer(i)) => {
+                        if *t == 0 {
+                            0.0
+                        } else {
+                            (i as f64) / (*t as f64)
+                        }
+                    }
+                    (Data::Number(t), Data::Number(n)) => {
+                        if *t == 0 {
+                            0.0
+                        } else {
+                            (n as f64) / (*t as f64)
+                        }
+                    }
+                    (Data::Float(t), Data::Float(f)) => {
+                        if *t == 0.0 {
+                            0.0
+                        } else {
+                            (f as f64) / (*t as f64)
+                        }
+                    }
+                    _ => {
+                        panic!("Row create stacked bar: So many validations failed")
+                    }
+                };
+                (label, fraction)
+            })
+            .collect::<HashMap<String, f64>>();
+
+        let pos_pnt = Point::new(x.clone(), pos_total.clone());
+        let pos_bar = StackedBar::new(pos_pnt, pos_fractions, false);
+
+        let neg_pnt = Point::new(x, neg_total.clone());
+        let neg_bar = StackedBar::new(neg_pnt, neg_fractions, true);
+
+        Ok([(pos_bar, pos_total), (neg_bar, neg_total)])
     }
 }
 
@@ -802,6 +933,50 @@ impl Sheet {
         Ok(())
     }
 
+    fn validate_to_stacked_bar_chart(&self, x_col: usize, cols: &[usize]) -> Result<Vec<String>> {
+        self.headers.get(x_col).ok_or(Error::ConversionError(
+            "Stacked Bar chart: x column out of range".into(),
+        ))?;
+
+        let mut kind = None;
+        let mut labels = Vec::with_capacity(cols.len());
+
+        for col in cols.iter() {
+            let header = self
+                .headers
+                .get(*col)
+                .cloned()
+                .ok_or(Error::ConversionError(
+                    "Stacked Bar chart: Accumulating column, out of range".into(),
+                ))?;
+
+            match kind {
+                None => kind = Some(header.kind),
+                Some(prev) => {
+                    if prev != header.kind {
+                        return Err(Error::ConversionError(
+                            "Stacked Bar chart: Cannot Accumulate different column types".into(),
+                        ));
+                    }
+                }
+            };
+
+            labels.push(header.label);
+        }
+
+        match kind {
+            Some(ColumnType::Number) | Some(ColumnType::Float) | Some(ColumnType::Integer) => {
+                Ok(labels)
+            }
+            Some(_) => Err(Error::ConversionError(
+                "Stacked Bar Chart Cannot accumulate column type".into(),
+            )),
+            None => Err(Error::ConversionError(
+                "Stacked Bar chart: Empty Accumulation columns".into(),
+            )),
+        }
+    }
+
     /// Returns a new line graph created from this csv struct
     ///
     /// exclude_row: The positions of the rows to exclude in this transformation
@@ -1006,5 +1181,86 @@ impl Sheet {
             .y_label_option(y_label);
 
         Ok(barchart)
+    }
+
+    pub fn create_stacked_bar_chart(
+        self,
+        x_col: usize,
+        cols: impl Into<Vec<usize>>,
+        axis_labels: StackedBarChartAxisLabelStrategy,
+    ) -> Result<StackedBarChart> {
+        let cols = cols.into();
+        let acc_labels = self.validate_to_stacked_bar_chart(x_col, &cols)?;
+
+        if self.is_empty() {
+            return Err(Error::ConversionError(
+                "Cannot convert an empty sheet".into(),
+            ));
+        }
+
+        let x_values = self.rows.iter().map(|row| {
+            row.cells
+                .get(x_col)
+                .cloned()
+                .expect("Stacked Bar Chart conversion: Validations failed")
+                .data
+        });
+        let mut y_values = Vec::default();
+        let mut bars = Vec::default();
+
+        for row in self.rows.iter() {
+            let [pos, neg] = row.create_stacked_bar_chart(x_col, &cols, &acc_labels)?;
+
+            if pos.1 != Data::None {
+                bars.push(pos.0);
+                y_values.push(pos.1);
+            }
+
+            if neg.1 != Data::None {
+                bars.push(neg.0);
+                y_values.push(neg.1);
+            }
+
+            //y_values.extend(ys);
+            //bars.extend(bar);
+        }
+
+        let x_scale = {
+            let mut values = x_values
+                .collect::<HashSet<Data>>()
+                .into_iter()
+                .collect::<Vec<Data>>();
+            values.sort();
+
+            Scale::List(values)
+        };
+
+        let y_scale = {
+            let values = y_values.into_iter().collect::<HashSet<Data>>();
+
+            let mut values = values.into_iter().collect::<Vec<Data>>();
+            values.sort();
+
+            Scale::List(values)
+        };
+
+        let acc_labels = acc_labels.into_iter().collect();
+
+        let stacked = StackedBarChart::new(bars, x_scale, y_scale, acc_labels)?;
+
+        match axis_labels {
+            StackedBarChartAxisLabelStrategy::None => Ok(stacked),
+            StackedBarChartAxisLabelStrategy::Header(y_label) => {
+                let x_label = self
+                    .headers
+                    .get(x_col)
+                    .cloned()
+                    .map(|header| header.label)
+                    .unwrap_or(String::default());
+
+                Ok(stacked.x_axis(x_label).y_axis(y_label))
+            }
+            StackedBarChartAxisLabelStrategy::Provided { x, y } => Ok(stacked.x_axis(x).y_axis(y)),
+        }
     }
 }
