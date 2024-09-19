@@ -16,28 +16,45 @@ pub struct StackedBar<X = Data, Y = Data> {
     pub fractions: HashMap<String, f64>,
     /// Is true of all points within the bar are negative
     pub is_negative: bool,
+    /// The full value of the stacked bar
+    true_y: Y,
+    /// Keeps track of sections removed from the bar
+    removed_sections: HashSet<String>,
 }
 
-impl<X, Y> StackedBar<X, Y> {
-    pub fn new(point: Point<X, Y>, fractions: HashMap<String, f64>, is_negative: bool) -> Self {
+impl<X, Y> StackedBar<X, Y>
+where
+    Y: Clone,
+{
+    pub(crate) fn new(
+        point: Point<X, Y>,
+        fractions: HashMap<String, f64>,
+        is_negative: bool,
+    ) -> Self {
+        let true_y = point.y.clone();
         Self {
             point,
             fractions,
             is_negative,
+            true_y,
+            removed_sections: HashSet::new(),
         }
     }
 
     pub fn from_point(point: impl Into<Point<X, Y>>, is_negative: bool) -> Self {
+        let point = point.into();
+        let true_y = point.y.clone();
         Self {
-            point: point.into(),
+            point,
             fractions: HashMap::default(),
             is_negative,
+            true_y,
+            removed_sections: HashSet::new(),
         }
     }
 
-    pub fn set_fractions(mut self, fractions: HashMap<String, f64>) -> Self {
-        self.fractions = fractions;
-        self
+    pub fn restore(&mut self) {
+        self.point.y = self.true_y.clone();
     }
 
     pub fn get_fractions(&self) -> &HashMap<String, f64> {
@@ -59,6 +76,66 @@ impl StackedBar<Data, Data> {
             Data::Float(f) => *f == 0.0,
             _ => false,
         }
+    }
+
+    /// Effectively removes the contribution of specified section from the
+    /// stacked bar if it exists
+    pub fn remove_section(&mut self, section: impl Into<String>) {
+        let section = section.into();
+
+        if self.removed_sections.contains(&section) {
+            return;
+        }
+
+        let fraction = self.fractions.get(&section);
+
+        let Some(fraction) = fraction else { return };
+
+        let contribution = match self.true_y {
+            Data::Number(n) => (n as f64) * fraction,
+            Data::Integer(i) => (i as f64) * fraction,
+            Data::Float(f) => (f as f64) * fraction,
+            _ => 0.0,
+        };
+
+        match self.point.y {
+            Data::Number(n) => self.point.y = Data::Number(((n as f64) - contribution) as isize),
+            Data::Integer(i) => self.point.y = Data::Integer(((i as f64) - contribution) as i32),
+            Data::Float(f) => self.point.y = Data::Float(((f as f64) - contribution) as f32),
+            _ => {}
+        };
+
+        self.removed_sections.insert(section);
+    }
+
+    /// Effectively re-adds the contribution of specified section to the
+    /// stacked bar if it exists
+    pub fn add_section(&mut self, section: impl Into<String>) {
+        let section = section.into();
+
+        if !self.removed_sections.contains(&section) {
+            return;
+        }
+
+        let fraction = self.fractions.get(&section);
+
+        let Some(fraction) = fraction else { return };
+
+        let contribution = match self.true_y {
+            Data::Number(n) => (n as f64) * fraction,
+            Data::Integer(i) => (i as f64) * fraction,
+            Data::Float(f) => (f as f64) * fraction,
+            _ => 0.0,
+        };
+
+        match self.point.y {
+            Data::Number(n) => self.point.y = Data::Number(((n as f64) + contribution) as isize),
+            Data::Integer(i) => self.point.y = Data::Integer(((i as f64) + contribution) as i32),
+            Data::Float(f) => self.point.y = Data::Float(((f as f64) + contribution) as f32),
+            _ => {}
+        }
+
+        self.removed_sections.remove(&section);
     }
 }
 
@@ -84,7 +161,7 @@ where
     X: Eq + Clone + Hash + PartialOrd + ToString + Debug,
     Y: Eq + Clone + Hash + PartialOrd + ToString + Debug,
 {
-    pub fn new(
+    pub(crate) fn new(
         bars: Vec<StackedBar<X, Y>>,
         x_scale: Scale<X>,
         y_scale: Scale<Y>,
@@ -215,6 +292,32 @@ impl StackedBarChart<Data, Data> {
         self.bars
             .iter()
             .any(|bar| !bar.is_negative && !bar.is_empty())
+    }
+
+    pub fn remove_section(&mut self, bar: usize, section: impl Into<String>) {
+        if let Some(bar) = self.bars.get_mut(bar) {
+            bar.remove_section(section);
+        };
+    }
+
+    pub fn remove_section_all(&mut self, section: impl Into<String>) {
+        let section: String = section.into();
+        self.bars.iter_mut().for_each(|bar| {
+            bar.remove_section(section.clone());
+        });
+    }
+
+    pub fn add_section(&mut self, bar: usize, section: impl Into<String>) {
+        if let Some(bar) = self.bars.get_mut(bar) {
+            bar.add_section(section);
+        };
+    }
+
+    pub fn add_section_all(&mut self, section: impl Into<String>) {
+        let section: String = section.into();
+        self.bars.iter_mut().for_each(|bar| {
+            bar.add_section(section.clone());
+        });
     }
 }
 
