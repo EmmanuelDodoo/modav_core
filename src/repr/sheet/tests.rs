@@ -978,6 +978,7 @@ fn test_stacked_bar_char() {
     assert_eq!(stacked.bars.get(3).unwrap().fractions, fraction);
 
     let stacked = res
+        .clone()
         .create_stacked_bar_chart(
             0,
             [1, 2, 3, 4],
@@ -1003,6 +1004,37 @@ fn test_stacked_bar_char() {
             Data::Integer(7)
         ]
     );
+
+    let mut stacked = res
+        .create_stacked_bar_chart(0, [1, 2, 3, 4], StackedBarChartAxisLabelStrategy::None)
+        .unwrap();
+    // test multiple remove/add of the same section
+    assert_eq!(stacked.bars.get(2).unwrap().point.y, 14.into());
+    stacked.remove_section(1, "Coffee");
+    assert_eq!(stacked.bars.get(1).unwrap().point.y, 9.into());
+    stacked.remove_section(1, "Coffee");
+    stacked.remove_section(1, "Coffee");
+    assert_eq!(stacked.bars.get(1).unwrap().point.y, 9.into());
+    stacked.add_section(1, "Coffee");
+    assert_eq!(stacked.bars.get(1).unwrap().point.y, 19.into());
+    stacked.add_section(1, "Coffee");
+    stacked.add_section(1, "Coffee");
+    assert_eq!(stacked.bars.get(1).unwrap().point.y, 19.into());
+    stacked.remove_section_all("Soda");
+    assert_eq!(stacked.bars.get(0).unwrap().point.y, 16.into());
+    assert_eq!(stacked.bars.get(5).unwrap().point.y, 11.into());
+    stacked.remove_section_all("Soda");
+    stacked.remove_section_all("Soda");
+    stacked.remove_section_all("Soda");
+    assert_eq!(stacked.bars.get(0).unwrap().point.y, 16.into());
+    assert_eq!(stacked.bars.get(5).unwrap().point.y, 11.into());
+    stacked.add_section_all("Soda");
+    assert_eq!(stacked.bars.get(0).unwrap().point.y, 19.into());
+    assert_eq!(stacked.bars.get(5).unwrap().point.y, 11.into());
+    stacked.add_section_all("Soda");
+    stacked.add_section_all("Soda");
+    assert_eq!(stacked.bars.get(0).unwrap().point.y, 19.into());
+    assert_eq!(stacked.bars.get(5).unwrap().point.y, 11.into());
 
     let path: PathBuf = "./dummies/csv/stacked_neg.csv".into();
 
