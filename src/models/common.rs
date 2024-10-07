@@ -20,7 +20,7 @@ impl<X, Y> From<(X, Y)> for Point<X, Y> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Scale<T>
+pub enum Scale<T = Data>
 where
     T: Clone + Debug,
 {
@@ -35,6 +35,17 @@ where
     pub fn points(&self) -> Vec<T> {
         match self {
             Self::List(lst) => lst.clone(),
+        }
+    }
+}
+
+impl<T> From<Scale<T>> for Vec<T>
+where
+    T: Clone + Debug,
+{
+    fn from(value: Scale<T>) -> Self {
+        match value {
+            Scale::List(lst) => lst,
         }
     }
 }
