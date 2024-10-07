@@ -529,7 +529,7 @@ fn test_line_scales() {
         )
         .expect("Building alter csv line graph failure");
 
-    let expected_x_scale = {
+    let mut expected_x_scale = {
         let values = vec![1958, 1959, 1960];
         let values = values.into_iter().map(|year| Data::Text(year.to_string()));
 
@@ -537,6 +537,7 @@ fn test_line_scales() {
     };
 
     line.x_scale.sort();
+    expected_x_scale.sort();
     assert_eq!(line.x_scale, expected_x_scale);
 
     let expected_y_scale = {

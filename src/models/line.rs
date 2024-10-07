@@ -173,7 +173,6 @@ mod line_tests {
 
         let y_scale = {
             let values = vec!["one", "two", "three", "four", "five"];
-            let values = values.into_iter().map(ToOwned::to_owned).map(From::from);
 
             Scale::new(values, ScaleKind::Text)
         };
@@ -196,13 +195,11 @@ mod line_tests {
 
         let x_scale: Scale = {
             let rng = -5..11;
-            let rng = rng.into_iter().map(From::from);
 
             Scale::new(rng, ScaleKind::Integer)
         };
         let y_scale: Scale = {
             let rng = 2..10;
-            let rng = rng.into_iter().map(From::from);
 
             Scale::new(rng, ScaleKind::Integer)
         };

@@ -1,5 +1,5 @@
 use crate::repr::{ColumnType, Data};
-use std::{collections::HashSet, fmt::Debug};
+use std::{collections::HashSet, fmt::Debug, isize};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Point<X = Data, Y = Data> {
@@ -66,21 +66,29 @@ enum ScaleValues {
 pub struct Scale {
     pub kind: ScaleKind,
     values: ScaleValues,
+    pub length: usize,
 }
 
 impl Scale {
     /// Returns a new scale of the specified type from the given points.
     /// If the scale type specified cannot be created from the points, a [`ScaleKind::Text`] is
     /// created instead.
-    pub(crate) fn new(points: impl Iterator<Item = Data>, kind: ScaleKind) -> Self {
+    pub(crate) fn new(points: impl IntoIterator<Item = impl Into<Data>>, kind: ScaleKind) -> Self {
+        let points = points.into_iter().map(Into::into);
         match kind {
             ScaleKind::Text => {
                 let values = points
                     .map(|point| point.to_string())
                     .collect::<HashSet<String>>();
-                let values = ScaleValues::Text(values.into_iter().collect());
+                let values = values.into_iter().collect::<Vec<String>>();
+                let length = values.len();
+                let values = ScaleValues::Text(values);
 
-                Self { kind, values }
+                Self {
+                    kind,
+                    values,
+                    length,
+                }
             }
             ScaleKind::Integer => {
                 let mut valid = HashSet::new();
@@ -97,17 +105,31 @@ impl Scale {
                     };
                 }
 
-                if !invalid.is_empty() {
+                if valid.is_empty() && invalid.is_empty() {
+                    Self {
+                        kind,
+                        values: ScaleValues::Integer {
+                            start: 0,
+                            end: 0,
+                            step: 0,
+                        },
+                        length: 1,
+                    }
+                } else if !invalid.is_empty() {
                     for point in valid.into_iter() {
                         invalid.insert(point.to_string());
                     }
 
+                    let invalid = invalid.into_iter().collect::<Vec<String>>();
+                    let length = invalid.len();
+
                     Self {
                         kind: ScaleKind::Text,
-                        values: ScaleValues::Text(invalid.into_iter().collect()),
+                        values: ScaleValues::Text(invalid),
+                        length,
                     }
                 } else {
-                    Self::from_i32(valid.into_iter().collect::<Vec<i32>>())
+                    Self::from_i32(valid.into_iter())
                 }
             }
             ScaleKind::Number => {
@@ -125,17 +147,31 @@ impl Scale {
                     }
                 }
 
-                if !invalid.is_empty() {
+                if valid.is_empty() && invalid.is_empty() {
+                    Self {
+                        kind,
+                        values: ScaleValues::Number {
+                            start: 0,
+                            end: 0,
+                            step: 0,
+                        },
+                        length: 1,
+                    }
+                } else if !invalid.is_empty() {
                     for point in valid.into_iter() {
                         invalid.insert(point.to_string());
                     }
 
+                    let invalid = invalid.into_iter().collect::<Vec<String>>();
+                    let length = invalid.len();
+
                     Self {
                         kind: ScaleKind::Text,
-                        values: ScaleValues::Text(invalid.into_iter().collect()),
+                        values: ScaleValues::Text(invalid),
+                        length,
                     }
                 } else {
-                    Self::from_isize(valid.into_iter().collect::<Vec<isize>>())
+                    Self::from_isize(valid.into_iter())
                 }
             }
             ScaleKind::Float => {
@@ -156,17 +192,31 @@ impl Scale {
                     }
                 }
 
-                if !invalid.is_empty() {
+                if valid.is_empty() && invalid.is_empty() {
+                    Self {
+                        kind,
+                        values: ScaleValues::Float {
+                            start: 0.0,
+                            end: 0.0,
+                            step: 0.0,
+                        },
+                        length: 1,
+                    }
+                } else if !invalid.is_empty() {
                     for point in valid.into_iter() {
                         invalid.insert(point.to_string());
                     }
 
+                    let invalid = invalid.into_iter().collect::<Vec<String>>();
+                    let length = invalid.len();
+
                     Self {
                         kind: ScaleKind::Text,
-                        values: ScaleValues::Text(invalid.into_iter().collect()),
+                        values: ScaleValues::Text(invalid),
+                        length,
                     }
                 } else {
-                    Self::from_f32(valid)
+                    Self::from_f32(valid.into_iter())
                 }
             }
         }
@@ -174,10 +224,14 @@ impl Scale {
 
     pub fn points(&self) -> Vec<Data> {
         match &self.values {
-            ScaleValues::Text(values) => values.iter().cloned().map(From::from).collect(),
-            ScaleValues::Number { start, end, step } => {
+            ScaleValues::Text(values) => values
+                .iter()
+                .cloned()
+                .map(|value| Data::Text(value))
+                .collect(),
+            ScaleValues::Number { start, step, .. } => {
                 let mut output = Vec::default();
-                let n = ((end - start) / step) + 1;
+                let n = self.length as isize;
 
                 for i in 0..n {
                     let curr = *start + (i * step);
@@ -186,9 +240,9 @@ impl Scale {
 
                 output
             }
-            ScaleValues::Integer { start, end, step } => {
+            ScaleValues::Integer { start, step, .. } => {
                 let mut output = Vec::default();
-                let n = ((end - start) / step) + 1;
+                let n = self.length as i32;
 
                 for i in 0..n {
                     let curr = *start + (i * step);
@@ -197,9 +251,9 @@ impl Scale {
 
                 output
             }
-            ScaleValues::Float { start, end, step } => {
+            ScaleValues::Float { start, step, .. } => {
                 let mut output = Vec::default();
-                let n = (((end - start) / step) + 1.0) as isize;
+                let n = self.length as isize;
 
                 for i in 0..n {
                     let curr = *start + ((i as f32) * step);
@@ -214,132 +268,188 @@ impl Scale {
     pub fn contains(&self, value: &Data) -> bool {
         match (&self.values, value) {
             (ScaleValues::Text(values), Data::Text(val)) => values.contains(val),
-            (ScaleValues::Number { start, end, .. }, Data::Number(num)) => {
-                start <= num && num <= end
+            (ScaleValues::Number { start, step, .. }, Data::Number(num)) => {
+                let end = start + (*step * (self.length - 1) as isize);
+                start <= num && num <= &end
             }
-            (ScaleValues::Integer { start, end, .. }, Data::Integer(num)) => {
-                start <= num && num <= end
+            (ScaleValues::Integer { start, step, .. }, Data::Integer(num)) => {
+                let end = start + (*step * (self.length - 1) as i32);
+                start <= num && num <= &end
             }
-            (ScaleValues::Float { start, end, .. }, Data::Float(num)) => start <= num && num <= end,
+            (ScaleValues::Float { start, step, .. }, Data::Float(num)) => {
+                let end = start + (*step * (self.length - 1) as f32);
+                start <= num && num <= &end
+            }
             _ => false,
         }
     }
 
     /// Assumes points is not empty
-    pub fn from_i32(points: impl Into<Vec<i32>>) -> Self {
-        let mut points: Vec<i32> = points.into();
-        points.sort();
+    fn from_i32(points: impl Iterator<Item = i32>) -> Self {
+        let deduped = points.collect::<HashSet<i32>>();
 
-        // Scale contains both negative and positive values
-        let temp = points.iter().fold((false, false), |acc, curr| {
-            if acc.0 && acc.1 {
-                acc
-            } else if *curr < 0 {
-                (true, acc.1)
+        let mut min = None;
+        let mut max = None;
+        let mut has_neg = false;
+        let mut has_pos = false;
+
+        for num in deduped.iter() {
+            let num = *num;
+            has_neg = num < 0;
+            has_pos = num >= 0;
+
+            if let Some(prev) = min {
+                if num < prev {
+                    min = Some(num);
+                }
             } else {
-                (acc.0, true)
+                min = Some(num);
             }
-        });
 
-        let len = points.len();
-        let min = points.first().unwrap(); // Guaranteed by iteration in Self::new
-        let max = points.get(len - 1).unwrap(); // Guaranteed by iteration in Self::new
-        let len = if temp.0 && temp.1 {
-            points.len() + 1
+            if let Some(prev) = max {
+                if num > prev {
+                    max = Some(num);
+                }
+            } else {
+                max = Some(num);
+            }
+        }
+
+        let len = if has_pos && has_neg {
+            deduped.len() + 1
         } else {
-            points.len()
+            deduped.len()
         };
 
+        let min = min.unwrap();
+        let max = max.unwrap();
         let mut step = (max - min) / len as i32;
 
         if step * (len as i32) != max - min {
             step += 1
         }
 
+        let length = if ((len - 1) as i32) * step + min < max {
+            len + 1
+        } else {
+            len
+        };
+
         Self {
             kind: ScaleKind::Integer,
+            length,
             values: ScaleValues::Integer {
-                start: *min,
-                end: *max,
+                start: min,
+                end: max,
                 step,
             },
         }
     }
 
     /// Assumes points is not empty
-    pub fn from_isize(points: impl Into<Vec<isize>>) -> Self {
-        let mut points: Vec<isize> = points.into();
-        points.sort();
+    fn from_isize(points: impl Iterator<Item = isize>) -> Self {
+        let deduped = points.collect::<HashSet<isize>>();
 
-        let temp = points.iter().fold((false, false), |acc, curr| {
-            if acc.0 && acc.1 {
-                acc
-            } else if *curr < 0 {
-                (true, acc.1)
+        let mut min = None;
+        let mut max = None;
+        let mut has_neg = false;
+        let mut has_pos = false;
+
+        for num in deduped.iter() {
+            let num = *num;
+            has_neg = num < 0;
+            has_pos = num >= 0;
+
+            if let Some(prev) = min {
+                if num < prev {
+                    min = Some(num);
+                }
             } else {
-                (acc.0, true)
+                min = Some(num);
             }
-        });
 
-        let len = points.len();
-        let min = points.first().unwrap(); // Guaranteed by iteration in Self::new
-        let max = points.get(len - 1).unwrap(); // Guaranteed by iteration in Self::new
-        let len = if temp.0 && temp.1 {
-            points.len() + 1
+            if let Some(prev) = max {
+                if num > prev {
+                    max = Some(num);
+                }
+            } else {
+                max = Some(num);
+            }
+        }
+
+        let len = if has_pos && has_neg {
+            deduped.len() + 1
         } else {
-            points.len()
+            deduped.len()
         };
 
+        let min = min.unwrap();
+        let max = max.unwrap();
         let mut step = (max - min) / len as isize;
 
         if step * (len as isize) != max - min {
             step += 1
         }
 
+        let length = if ((len - 1) as isize) * step + min < max {
+            len + 1
+        } else {
+            len
+        };
+
         Self {
             kind: ScaleKind::Number,
+            length,
             values: ScaleValues::Number {
-                start: *min,
-                end: *max,
+                start: min,
+                end: max,
                 step,
             },
         }
     }
 
-    pub fn from_f32(points: impl Into<Vec<f32>>) -> Self {
-        let points: Vec<f32> = points.into();
+    fn from_f32(points: impl Iterator<Item = f32>) -> Self {
+        let mut min = None;
+        let mut max = None;
+        let mut has_neg = false;
+        let mut has_pos = false;
+        let mut seen = Vec::default();
 
-        let mut min = *points.first().unwrap();
-        let mut max = *points.first().unwrap();
+        for point in points {
+            let point = point;
 
-        for point in points.iter() {
-            let point = *point;
-
-            if point < min {
-                min = point;
-                continue;
+            if !seen.iter().any(|pnt| *pnt == point) {
+                seen.push(point);
             }
 
-            if point > max {
-                max = point;
-                continue;
+            has_neg = point < 0.0;
+            has_pos = point >= 0.0;
+
+            // I'm not quite certain how the < and > would work around NaN,
+            if let Some(prev) = min {
+                if point < prev {
+                    min = Some(point);
+                }
+            } else {
+                min = Some(point);
+            }
+
+            if let Some(prev) = min {
+                if point > prev {
+                    max = Some(point);
+                }
+            } else {
+                max = Some(point);
             }
         }
 
-        let temp = points.iter().fold((false, false), |acc, curr| {
-            if acc.0 && acc.1 {
-                acc
-            } else if *curr < 0.0 {
-                (true, acc.1)
-            } else {
-                (acc.0, true)
-            }
-        });
+        let min = min.unwrap();
+        let max = max.unwrap();
 
-        let len = if temp.0 && temp.1 {
-            points.len() + 1
+        let len = if has_pos && has_neg {
+            seen.len() + 1
         } else {
-            points.len()
+            seen.len()
         };
 
         let mut step = (max - min) / len as f32;
@@ -348,8 +458,15 @@ impl Scale {
             step += 1.0
         }
 
+        let length = if ((len - 1) as f32) * step + min < max {
+            len + 1
+        } else {
+            len
+        };
+
         Self {
             kind: ScaleKind::Float,
+            length,
             values: ScaleValues::Float {
                 start: min,
                 end: max,
@@ -367,22 +484,19 @@ impl Scale {
 
 impl From<Vec<i32>> for Scale {
     fn from(value: Vec<i32>) -> Self {
-        let values = value.into_iter().map(From::from);
-        Self::new(values, ScaleKind::Integer)
+        Self::new(value.into_iter(), ScaleKind::Integer)
     }
 }
 
 impl From<Vec<isize>> for Scale {
     fn from(value: Vec<isize>) -> Self {
-        let values = value.into_iter().map(From::from);
-        Self::new(values, ScaleKind::Number)
+        Self::new(value.into_iter(), ScaleKind::Number)
     }
 }
 
 impl From<Vec<f32>> for Scale {
     fn from(value: Vec<f32>) -> Self {
-        let values = value.into_iter().map(From::from);
-        Self::new(values, ScaleKind::Float)
+        Self::new(value.into_iter(), ScaleKind::Float)
     }
 }
 
@@ -411,5 +525,167 @@ mod tests {
         let p4: Point<&str, f32> = ("tired", 0.50).into();
         assert_eq!(p4.x, "tired");
         assert_eq!(p4.y, 0.50);
+    }
+
+    #[test]
+    fn test_scale_dedup() {
+        let pnts = vec![1, 2, 3, 4, 5];
+        let scale = Scale::new(pnts, ScaleKind::Integer);
+
+        assert_eq!(scale.length, 5);
+        assert_eq!(
+            scale.points(),
+            vec![
+                Data::Integer(1),
+                Data::Integer(2),
+                Data::Integer(3),
+                Data::Integer(4),
+                Data::Integer(5)
+            ]
+        );
+
+        let pnts = vec![1, 3, 2, 2, 3, 4, 1, 5];
+        let scale = Scale::new(pnts, ScaleKind::Integer);
+
+        assert_eq!(scale.length, 5);
+        assert_eq!(
+            scale.points(),
+            vec![
+                Data::Integer(1),
+                Data::Integer(2),
+                Data::Integer(3),
+                Data::Integer(4),
+                Data::Integer(5)
+            ]
+        );
+
+        let pnts: Vec<isize> = vec![1, 12, 12, 6, 4, 1, 25];
+        let scale = Scale::new(pnts, ScaleKind::Number);
+
+        assert_eq!(scale.length, 6);
+        assert!(scale.contains(&Data::Number(25)));
+        assert!(scale.contains(&Data::Number(26)));
+        assert!(!scale.contains(&Data::Number(30)));
+        assert!(!scale.contains(&Data::Integer(25)));
+
+        let pnts: Vec<f32> = vec![1.0, 3.0, 2.0, 2.0, 3.0, 4.0, 1.0, 5.0];
+        let scale = Scale::new(pnts, ScaleKind::Float);
+
+        assert_eq!(scale.length, 6);
+        assert!(!scale.contains(&Data::Float(0.99)));
+
+        let pnts: Vec<isize> = vec![1, 12, 12, 6, 4, 1, 25];
+        let mut scale = Scale::new(pnts, ScaleKind::Text);
+        scale.sort();
+
+        assert_eq!(scale.length, 5);
+        assert_eq!(
+            scale.points(),
+            vec![
+                Data::Text("1".into()),
+                Data::Text("12".into()),
+                Data::Text("25".into()),
+                Data::Text("4".into()),
+                Data::Text("6".into()),
+            ]
+        );
+
+        let pnts = vec![
+            Data::Integer(44),
+            Data::Text("Test".into()),
+            Data::None,
+            Data::Integer(4),
+        ];
+        let mut scale = Scale::new(pnts, ScaleKind::Integer);
+        scale.sort();
+
+        println!("{scale:?}");
+        println!("{:?}", scale.points());
+
+        assert_eq!(scale.length, 4);
+        assert_eq!(
+            scale.points(),
+            vec![
+                Data::Text("4".into()),
+                Data::Text("44".into()),
+                Data::Text("<None>".into()),
+                Data::Text("Test".into()),
+            ]
+        );
+        assert!(scale.contains(&Data::Text("44".into())));
+        assert!(!scale.contains(&Data::Integer(44)));
+        assert!(!scale.contains(&Data::None));
+        assert!(scale.contains(&Data::Text("Test".into())));
+        assert!(scale.contains(&Data::Text("<None>".into())));
+    }
+
+    #[test]
+    fn test_scale_pos_neg() {
+        let pnts = vec![-1, -8, -3];
+        let scale = Scale::new(pnts, ScaleKind::Integer);
+
+        assert_eq!(scale.length, 4);
+        assert_eq!(
+            scale.points(),
+            vec![
+                Data::Integer(-8),
+                Data::Integer(-5),
+                Data::Integer(-2),
+                Data::Integer(1),
+            ]
+        );
+        assert!(scale.contains(&Data::Integer(0)));
+
+        let pnts = vec![-2, 0, 1, 2, 5];
+        let scale = Scale::new(pnts, ScaleKind::Integer);
+
+        assert_eq!(scale.length, 5);
+        assert_eq!(
+            scale.points(),
+            vec![
+                Data::Integer(-2),
+                Data::Integer(0),
+                Data::Integer(2),
+                Data::Integer(4),
+                Data::Integer(6),
+            ]
+        );
+        assert!(scale.contains(&Data::Integer(6)));
+        assert!(!scale.contains(&Data::Integer(-3)));
+
+        let pnts = vec![-3, -10, -1, 2, -5];
+        let scale = Scale::new(pnts, ScaleKind::Integer);
+
+        assert_eq!(scale.length, 5);
+        assert_eq!(
+            scale.points(),
+            vec![
+                Data::Integer(-10),
+                Data::Integer(-7),
+                Data::Integer(-4),
+                Data::Integer(-1),
+                Data::Integer(2),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_scale_single() {
+        let pnt = vec![1];
+        let scale = Scale::new(pnt, ScaleKind::Integer);
+
+        assert_eq!(scale.length, 1);
+        assert_eq!(scale.points(), vec![Data::Integer(1)]);
+        assert!(scale.contains(&Data::Integer(1)));
+        assert!(!scale.contains(&Data::Integer(2)));
+    }
+
+    #[test]
+    fn test_scale_none() {
+        let scale = Scale::new(Vec::<Data>::new(), ScaleKind::Integer);
+
+        assert_eq!(scale.length, 1);
+        assert_eq!(scale.points(), vec![Data::Integer(0)]);
+        assert!(scale.contains(&Data::Integer(0)));
     }
 }
