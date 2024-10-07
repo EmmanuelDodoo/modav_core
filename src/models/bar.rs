@@ -1,27 +1,22 @@
-use std::{
-    collections::HashSet,
-    fmt::{self, Debug},
-    hash::Hash,
-};
+use std::fmt::{self, Debug};
 
 use super::{Point, Scale};
-use crate::repr::Data;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Bar<X = Data, Y = Data> {
+pub struct Bar {
     pub label: Option<String>,
-    pub point: Point<X, Y>,
+    pub point: Point,
 }
 
-impl<X, Y> Bar<X, Y> {
-    pub fn new(label: impl Into<String>, point: impl Into<Point<X, Y>>) -> Self {
+impl Bar {
+    pub fn new(label: impl Into<String>, point: impl Into<Point>) -> Self {
         Self {
             point: point.into(),
             label: Some(label.into()),
         }
     }
 
-    pub fn from_point(point: impl Into<Point<X, Y>>) -> Self {
+    pub fn from_point(point: impl Into<Point>) -> Self {
         Self {
             point: point.into(),
             label: None,
@@ -35,36 +30,19 @@ impl<X, Y> Bar<X, Y> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct BarChart<X = Data, Y = Data>
-where
-    X: Clone + Debug,
-    Y: Clone + Debug,
-{
-    pub bars: Vec<Bar<X, Y>>,
+pub struct BarChart {
+    pub bars: Vec<Bar>,
     pub x_label: Option<String>,
     pub y_label: Option<String>,
-    pub x_scale: Scale<X>,
-    pub y_scale: Scale<Y>,
+    pub x_scale: Scale,
+    pub y_scale: Scale,
 }
 
 #[allow(dead_code)]
-impl<X, Y> BarChart<X, Y>
-where
-    X: Eq + Clone + Hash + PartialOrd + ToString + Debug,
-    Y: Eq + Clone + Hash + PartialOrd + ToString + Debug,
-{
-    pub fn new(
-        bars: Vec<Bar<X, Y>>,
-        x_scale: Scale<X>,
-        y_scale: Scale<Y>,
-    ) -> Result<Self, BarChartError> {
-        match &x_scale {
-            Scale::List(scale) => Self::assert_list_scales_x(scale, &bars)?,
-        };
-
-        match &y_scale {
-            Scale::List(scale) => Self::assert_list_scales_y(scale, &bars)?,
-        };
+impl BarChart {
+    pub fn new(bars: Vec<Bar>, x_scale: Scale, y_scale: Scale) -> Result<Self, BarChartError> {
+        Self::assert_x_scale(&x_scale, &bars)?;
+        Self::assert_y_scale(&y_scale, &bars)?;
 
         Ok(Self {
             x_scale,
@@ -75,64 +53,24 @@ where
         })
     }
 
-    fn assert_list_scales_y(lst: &[Y], bars: &[Bar<X, Y>]) -> Result<(), BarChartError> {
-        // Duplicate check and removal
-        let mut lst: Vec<Y> = lst.to_vec();
-        let set: HashSet<Y> = lst.drain(..).collect();
-
-        // Check if all points are on scale.
-        let mut invalid: Option<Y> = None;
-        let valid = bars.iter().fold(true, |acc, curr| {
-            if !acc {
-                return acc;
+    fn assert_x_scale(scale: &Scale, bars: &[Bar]) -> Result<(), BarChartError> {
+        for x in bars.iter().map(|bar| &bar.point.x) {
+            if !scale.contains(x) {
+                return Err(BarChartError::OutOfRange("X".into(), x.to_string()));
             }
-
-            if !set.contains(&curr.point.y) {
-                invalid = Some(curr.point.y.clone());
-                false
-            } else {
-                true
-            }
-        });
-
-        if valid {
-            Ok(())
-        } else {
-            Err(BarChartError::OutOfRange(
-                "Y".into(),
-                invalid.unwrap().to_string(),
-            ))
         }
+
+        Ok(())
     }
 
-    fn assert_list_scales_x(lst: &[X], bars: &[Bar<X, Y>]) -> Result<(), BarChartError> {
-        // Duplicate check and removal
-        let mut lst: Vec<X> = lst.to_vec();
-        let set: HashSet<X> = lst.drain(..).collect();
-
-        let mut invalid: Option<X> = None;
-
-        let valid = bars.iter().fold(true, |acc, curr| {
-            if !acc {
-                return acc;
+    fn assert_y_scale(scale: &Scale, bars: &[Bar]) -> Result<(), BarChartError> {
+        for y in bars.iter().map(|bar| &bar.point.y) {
+            if !scale.contains(y) {
+                return Err(BarChartError::OutOfRange("Y".into(), y.to_string()));
             }
-
-            if !set.contains(&curr.point.x) {
-                invalid = Some(curr.point.x.clone());
-                false
-            } else {
-                true
-            }
-        });
-
-        if valid {
-            Ok(())
-        } else {
-            Err(BarChartError::OutOfRange(
-                "X".into(),
-                invalid.unwrap().to_string(),
-            ))
         }
+
+        Ok(())
     }
 
     pub fn x_label(mut self, label: impl Into<String>) -> Self {
@@ -169,24 +107,32 @@ impl std::error::Error for BarChartError {}
 
 #[cfg(test)]
 mod barchart_tests {
+    use super::super::ScaleKind;
     use super::*;
+    use crate::repr::Data;
 
-    fn create_barchart<'a>() -> BarChart<usize, &'a str> {
+    fn create_barchart() -> BarChart {
         let p1 = vec!["one", "two", "three", "four", "five"];
         let p2 = [1, 2, 3, 4, 5];
 
         let bars = p2
             .into_iter()
             .zip(p1.into_iter())
-            .map(|point| Bar::from_point(point))
+            .map(|point| Bar::from_point((Data::Integer(point.0), Data::Text(point.1.to_string()))))
             .collect();
 
-        let x_scale: Scale<usize> = {
+        let x_scale = {
             let rng = 0..60;
+            let rng = rng.into_iter().map(From::from);
 
-            Scale::List(rng.collect())
+            Scale::new(rng, ScaleKind::Integer)
         };
-        let y_scale: Scale<&str> = Scale::List(vec!["one", "two", "three", "four", "five"]);
+        let y_scale = {
+            let values = vec!["one", "two", "three", "four", "five"];
+            let values = values.into_iter().map(ToOwned::to_owned).map(From::from);
+
+            Scale::new(values, ScaleKind::Text)
+        };
 
         match BarChart::new(bars, x_scale, y_scale) {
             Ok(bar) => bar.x_label("Number").y_label("Language"),
@@ -194,24 +140,27 @@ mod barchart_tests {
         }
     }
 
-    fn out_of_range() -> Result<BarChart<isize, isize>, BarChartError> {
+    fn out_of_range() -> Result<BarChart, BarChartError> {
         let xs = [1, 5, 6, 11, 15];
         let ys = [4, 5, 6, 7, 8];
 
         let bars = xs
             .into_iter()
             .zip(ys.into_iter())
-            .map(|point| Bar::from_point(point))
+            .map(|point| Bar::from_point((Data::Integer(point.0), Data::Integer(point.1))))
             .collect();
 
-        let x_scale: Scale<isize> = {
+        let x_scale = {
             let rng = -5..11;
+            let rng = rng.into_iter().map(From::from);
 
-            Scale::List(rng.collect())
+            Scale::new(rng, ScaleKind::Integer)
         };
-        let y_scale: Scale<isize> = {
+        let y_scale = {
             let rng = 2..10;
-            Scale::List(rng.collect())
+            let rng = rng.into_iter().map(From::from);
+
+            Scale::new(rng, ScaleKind::Integer)
         };
 
         BarChart::new(bars, x_scale, y_scale)

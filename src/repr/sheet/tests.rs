@@ -519,7 +519,7 @@ fn test_line_scales() {
         .build()
         .expect("Building alter csv failure");
 
-    let line = sht
+    let mut line = sht
         .create_line_graph(
             None,
             None,
@@ -531,10 +531,12 @@ fn test_line_scales() {
 
     let expected_x_scale = {
         let values = vec![1958, 1959, 1960];
+        let values = values.into_iter().map(|year| Data::Text(year.to_string()));
 
-        Scale::List(values.into_iter().map(|year| year.to_string()).collect())
+        Scale::new(values, crate::models::ScaleKind::Integer)
     };
 
+    line.x_scale.sort();
     assert_eq!(line.x_scale, expected_x_scale);
 
     let expected_y_scale = {
@@ -542,12 +544,9 @@ fn test_line_scales() {
             318, 340, 342, 348, 360, 362, 363, 391, 396, 406, 417, 419, 420, 461, 472,
         ];
 
-        Scale::List(
-            values
-                .into_iter()
-                .map(|value| Into::<Data>::into(value))
-                .collect(),
-        )
+        let values = values.into_iter().map(|year| Data::Integer(year));
+
+        Scale::new(values, crate::models::ScaleKind::Integer)
     };
 
     assert_eq!(line.y_scale, expected_y_scale);
