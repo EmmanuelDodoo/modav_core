@@ -22,7 +22,7 @@ impl<X, Y> From<(X, Y)> for Point<X, Y> {
 /// Determines how points on the scale are handled
 ///
 ///
-/// Points on a [`ScaleKind::Text`] are treated categorically with all duplicates removed and in an arbitary order. Points on other [`ScaleKind`] are treated numerically as a range
+/// Points on a [`ScaleKind::Categorical`] are treated categorically with all duplicates removed and in an arbitary order. Points on other [`ScaleKind`] are treated numerically as a range
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) enum ScaleKind {
     Number,
@@ -77,14 +77,20 @@ pub struct Scale {
 
 impl Scale {
     /// Returns a new scale of the specified type from the given points.
-    /// If the scale type specified cannot be created from the points, a [`ScaleKind::Text`] is
+    /// If the scale type specified cannot be created from the points, a [`ScaleKind::Categorical`] is
     /// created instead.
     pub(crate) fn new(points: impl IntoIterator<Item = impl Into<Data>>, kind: ScaleKind) -> Self {
         let points = points.into_iter().map(Into::into);
         match kind {
             ScaleKind::Categorical => {
-                let values = points.collect::<HashSet<Data>>();
-                let values = values.into_iter().collect::<Vec<Data>>();
+                let mut values = Vec::default();
+
+                for point in points {
+                    if !values.iter().any(|pnt| pnt == &point) {
+                        values.push(point);
+                    }
+                }
+
                 let length = values.len();
                 let values = ScaleValues::Categorical(values);
 
