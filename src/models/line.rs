@@ -1,25 +1,27 @@
 use crate::repr::Data;
-use std::{collections::HashSet, fmt::Debug, hash::Hash, ops::Range};
+use std::fmt::Debug;
 pub use utils::*;
 
 use super::{Point, Scale};
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Line<X = Data, Y = Data> {
-    pub points: Vec<Point<X, Y>>,
+pub struct Line {
+    pub points: Vec<Point<Data, Data>>,
     pub label: Option<String>,
 }
 
-impl<X, Y> Line<X, Y> {
-    pub fn new(points: Vec<(X, Y)>) -> Self {
-        let points = points.into_iter().map(|(x, y)| Point::new(x, y));
+impl Line {
+    pub fn new(points: impl IntoIterator<Item = (impl Into<Data>, impl Into<Data>)>) -> Self {
+        let points = points
+            .into_iter()
+            .map(|(x, y)| Point::new(x.into(), y.into()));
         Self {
             points: points.collect(),
             label: None,
         }
     }
 
-    pub fn from_points(points: impl IntoIterator<Item = Point<X, Y>>) -> Self {
+    pub fn from_points(points: impl IntoIterator<Item = Point<Data, Data>>) -> Self {
         Self {
             points: points.into_iter().collect(),
             label: None,
@@ -33,44 +35,30 @@ impl<X, Y> Line<X, Y> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct LineGraph<X = Data, Y = Data>
-where
-    X: Clone + Debug,
-    Y: Clone + Debug,
-{
-    pub lines: Vec<Line<X, Y>>,
+pub struct LineGraph {
+    pub lines: Vec<Line>,
     pub x_label: String,
     pub y_label: String,
-    pub x_scale: Scale<X>,
-    pub y_scale: Scale<Y>,
+    pub x_scale: Scale,
+    pub y_scale: Scale,
 }
 
 #[allow(dead_code)]
-impl<X, Y> LineGraph<X, Y>
-where
-    X: Eq + Clone + Hash + PartialOrd + ToString + Debug,
-    Y: Eq + Clone + Hash + PartialOrd + ToString + Debug,
-{
+impl LineGraph {
     pub fn new(
-        lines: Vec<Line<X, Y>>,
+        lines: Vec<Line>,
         x_label: Option<String>,
         y_label: Option<String>,
-        x_scale: Scale<X>,
-        y_scale: Scale<Y>,
+        x_scale: Scale,
+        y_scale: Scale,
     ) -> Result<Self, LineGraphError> {
         let x_label = x_label.unwrap_or_default();
 
         let y_label = y_label.unwrap_or_default();
 
-        match &x_scale {
-            // Scale::Range(rng) => Scale::Range(LineGraph::assert_range_scales_x(rng, &lines)?),
-            Scale::List(lst) => LineGraph::assert_list_scales_x(lst, &lines)?,
-        };
+        LineGraph::assert_x_scale(&x_scale, &lines)?;
 
-        match &y_scale {
-            // Scale::Range(rng) => Scale::Range(LineGraph::assert_range_scales_y(rng, &lines)?),
-            Scale::List(lst) => LineGraph::assert_list_scales_y(lst, &lines)?,
-        };
+        LineGraph::assert_y_scale(&y_scale, &lines)?;
 
         Ok(Self {
             lines,
@@ -81,113 +69,30 @@ where
         })
     }
 
-    fn assert_range_scales_x(
-        rng: Range<X>,
-        lines: &[Line<X, Y>],
-    ) -> Result<Range<X>, LineGraphError> {
-        let rng = rng.start..rng.end;
-
-        let mut invalid: Option<X> = None;
-
-        let valid = lines.iter().fold(true, |acc, curr| {
-            return acc
-                && curr.points.iter().fold(true, |acc, curr| {
-                    if !rng.contains(&curr.x) {
-                        invalid = Some(curr.x.clone());
-                    }
-                    acc && rng.contains(&curr.x)
-                });
-        });
-
-        if valid {
-            Ok(rng)
-        } else {
-            Err(LineGraphError::OutOfRange(
-                "X".into(),
-                invalid.unwrap().to_string(),
-            ))
+    fn assert_x_scale(scale: &Scale, lines: &[Line]) -> Result<(), LineGraphError> {
+        for x in lines
+            .iter()
+            .flat_map(|line| line.points.iter().map(|point| &point.x))
+        {
+            if !scale.contains(x) {
+                return Err(LineGraphError::OutOfRange("X".into(), x.to_string()));
+            }
         }
+
+        Ok(())
     }
 
-    fn assert_range_scales_y(
-        rng: Range<Y>,
-        lines: &[Line<X, Y>],
-    ) -> Result<Range<Y>, LineGraphError> {
-        let rng = rng.start..rng.end;
-        let mut invalid: Option<Y> = None;
-        let valid = lines.iter().fold(true, |acc, curr| {
-            return acc
-                && curr.points.iter().fold(true, |acc, curr| {
-                    if !rng.contains(&curr.y) {
-                        invalid = Some(curr.y.clone());
-                    }
-                    acc && rng.contains(&curr.y)
-                });
-        });
-
-        if valid {
-            Ok(rng)
-        } else {
-            Err(LineGraphError::OutOfRange(
-                "Y".into(),
-                invalid.unwrap().to_string(),
-            ))
+    fn assert_y_scale(scale: &Scale, lines: &[Line]) -> Result<(), LineGraphError> {
+        for y in lines
+            .iter()
+            .flat_map(|line| line.points.iter().map(|point| &point.y))
+        {
+            if !scale.contains(y) {
+                return Err(LineGraphError::OutOfRange("Y".into(), y.to_string()));
+            }
         }
-    }
 
-    fn assert_list_scales_x(lst: &[X], lines: &[Line<X, Y>]) -> Result<(), LineGraphError> {
-        // Duplicate check and removal
-        let mut lst: Vec<X> = lst.to_vec();
-        let set: HashSet<X> = lst.drain(..).collect();
-
-        let mut invalid: Option<X> = None;
-
-        // Check if all points are on scale.
-        let valid = lines.iter().fold(true, |acc, cur| {
-            return acc
-                && cur.points.iter().fold(true, |acc, curr| {
-                    if !set.contains(&curr.x) {
-                        invalid = Some(curr.x.clone());
-                    }
-                    acc && set.contains(&curr.x)
-                });
-        });
-
-        if valid {
-            Ok(())
-        } else {
-            Err(LineGraphError::OutOfRange(
-                "X".into(),
-                invalid.unwrap().to_string(),
-            ))
-        }
-    }
-
-    fn assert_list_scales_y(lst: &[Y], lines: &[Line<X, Y>]) -> Result<(), LineGraphError> {
-        // Duplicate check and removal
-        let mut lst: Vec<Y> = lst.to_vec();
-        let set: HashSet<Y> = lst.drain(..).collect();
-
-        // Check if all points are on scale.
-        let mut invalid: Option<Y> = None;
-        let valid = lines.iter().fold(true, |acc, cur| {
-            return acc
-                && cur.points.iter().fold(true, |acc, curr| {
-                    if !set.contains(&curr.y) {
-                        invalid = Some(curr.y.clone())
-                    }
-                    acc && set.contains(&curr.y)
-                });
-        });
-
-        if valid {
-            Ok(())
-        } else {
-            Err(LineGraphError::OutOfRange(
-                "Y".into(),
-                invalid.unwrap().to_string(),
-            ))
-        }
+        Ok(())
     }
 }
 
@@ -222,27 +127,31 @@ pub mod utils {
 
 #[cfg(test)]
 mod line_tests {
+    use super::super::common::ScaleKind;
     use super::*;
 
     fn create_point<X, Y>(x: X, y: Y) -> Point<X, Y> {
         Point::new(x, y)
     }
 
-    fn create_line_from_points(xs: Vec<&str>, label: impl Into<String>) -> Line<usize, &str> {
-        let points: Vec<Point<usize, &str>> = xs
+    fn create_line_from_points(xs: Vec<&str>, label: impl Into<String>) -> Line {
+        let points: Vec<Point> = xs
             .into_iter()
             .enumerate()
-            .map(|(i, x)| create_point(i, x))
+            .map(|(i, x)| create_point(Data::Number(i as isize), Data::Text(x.to_owned())))
             .collect();
 
         Line::from_points(points).label(label)
     }
 
-    fn create_line_from_new(xs: Vec<(usize, &str)>, label: impl Into<String>) -> Line<usize, &str> {
-        Line::new(xs).label(label)
+    fn create_line_from_new(xs: Vec<(usize, &str)>, label: impl Into<String>) -> Line {
+        let points = xs
+            .iter()
+            .map(|(idx, text)| (Data::Number(*idx as isize), Data::Text(text.to_string())));
+        Line::new(points).label(label)
     }
 
-    fn create_graph<'a>() -> LineGraph<usize, &'a str> {
+    fn create_graph() -> LineGraph {
         let p1 = vec!["one", "two", "three", "four", "five"];
         let p2: Vec<(usize, &str)> = vec![
             (10, "one"),
@@ -255,13 +164,18 @@ mod line_tests {
         let pnt1 = create_line_from_new(p2, "Deutsch");
         let pnt2 = create_line_from_points(p1, "English");
 
-        // let x_scale: Scale<usize> = Scale::Range(0..60);
-        let x_scale: Scale<usize> = {
+        let x_scale = {
             let rng = 0..60;
+            let rng = rng.into_iter().map(|num| Data::Number(num as isize));
 
-            Scale::List(rng.collect())
+            Scale::new(rng, ScaleKind::Number)
         };
-        let y_scale: Scale<&str> = Scale::List(vec!["one", "two", "three", "four", "five"]);
+
+        let y_scale = {
+            let values = vec!["one", "two", "three", "four", "five"];
+
+            Scale::new(values, ScaleKind::Text)
+        };
 
         match LineGraph::new(
             vec![pnt1, pnt2],
@@ -275,18 +189,19 @@ mod line_tests {
         }
     }
 
-    fn faulty_graph1() -> Result<LineGraph<isize, isize>, LineGraphError> {
-        let p1: Vec<(isize, isize)> = vec![(0, 0), (1, 1), (20, 2), (3, 35)];
-        let p2: Vec<(isize, isize)> = vec![(10, 10), (4, 8), (-3, 3)];
+    fn faulty_graph1() -> Result<LineGraph, LineGraphError> {
+        let p1: Vec<(i32, i32)> = vec![(0, 0), (1, 1), (20, 2), (3, 35)];
+        let p2: Vec<(i32, i32)> = vec![(10, 10), (4, 8), (-3, 3)];
 
-        let x_scale: Scale<isize> = {
+        let x_scale: Scale = {
             let rng = -5..11;
 
-            Scale::List(rng.collect())
+            Scale::new(rng, ScaleKind::Integer)
         };
-        let y_scale: Scale<isize> = {
+        let y_scale: Scale = {
             let rng = 2..10;
-            Scale::List(rng.collect())
+
+            Scale::new(rng, ScaleKind::Integer)
         };
 
         let l1 = Line::new(p1);
@@ -301,9 +216,10 @@ mod line_tests {
         let line = create_line_from_points(pts, "Line 1");
 
         assert_eq!(line.label, Some(String::from("Line 1")));
-        let temp: Vec<&str> = line.points.iter().fold(vec![], |acc, curr| {
+
+        let temp: Vec<String> = line.points.iter().fold(vec![], |acc, curr| {
             let mut acc = acc.clone();
-            acc.push(curr.y);
+            acc.push(curr.y.to_string());
             acc
         });
         assert_eq!(vec!["one", "two", "three"], temp)

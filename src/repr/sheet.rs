@@ -10,6 +10,7 @@ use crate::models::{
     bar::{Bar, BarChart},
     line::{Line, LineGraph},
     stacked_bar::{StackedBar, StackedBarChart},
+    ScaleKind,
 };
 use crate::models::{Point, Scale};
 
@@ -209,11 +210,11 @@ impl Row {
     fn create_line(
         &self,
         label: &LineLabelStrategy,
-        x_values: &[String],
+        x_values: &[Data],
         exclude: &HashSet<usize>,
         idx: usize,
-    ) -> Line<String, Data> {
-        let points: Vec<Point<String, Data>> = match label {
+    ) -> Line {
+        let points: Vec<Point> = match label {
             LineLabelStrategy::FromCell(idx) => {
                 let points = x_values
                     .iter()
@@ -835,7 +836,7 @@ impl Sheet {
         }
     }
 
-    fn validate_to_line_graph(&self, label_strat: &LineLabelStrategy) -> Result<()> {
+    fn validate_to_line_graph(&self, label_strat: &LineLabelStrategy) -> Result<ScaleKind> {
         // None type Columns
         self.headers.iter().try_fold((), |_acc, curr| {
             if let ColumnHeader {
@@ -865,7 +866,7 @@ impl Sheet {
         };
 
         // Uniform type columns
-        match label_strat {
+        let kind = match label_strat {
             LineLabelStrategy::FromCell(idx) => {
                 if idx >= &self.headers.len() {
                     return Err(Error::ConversionError(
@@ -880,18 +881,17 @@ impl Sheet {
                     .filter(|(ind, _)| ind != idx)
                     .try_fold(ColumnType::None, |acc, (_, ct)| {
                         check_uniform_type(acc, *ct)
-                    })?;
+                    })?
             }
 
-            _ => {
-                self.headers
-                    .iter()
-                    .map(|hdr| &hdr.kind)
-                    .try_fold(ColumnType::None, |acc, ct| check_uniform_type(acc, *ct))?;
-            }
-        }
+            _ => self
+                .headers
+                .iter()
+                .map(|hdr| &hdr.kind)
+                .try_fold(ColumnType::None, |acc, ct| check_uniform_type(acc, *ct))?,
+        };
 
-        Ok(())
+        Ok(kind.into())
     }
 
     fn validate_to_barchart(
@@ -899,7 +899,7 @@ impl Sheet {
         x_col: usize,
         y_col: usize,
         bar_label: &BarChartBarLabels,
-    ) -> Result<()> {
+    ) -> Result<(ScaleKind, ScaleKind)> {
         if let BarChartBarLabels::FromColumn(idx) = bar_label {
             if idx >= &self.headers.len() {
                 return Err(Error::ConversionError(
@@ -936,10 +936,14 @@ impl Sheet {
             ));
         }
 
-        Ok(())
+        Ok((x_type.into(), y_type.into()))
     }
 
-    fn validate_to_stacked_bar_chart(&self, x_col: usize, cols: &[usize]) -> Result<Vec<String>> {
+    fn validate_to_stacked_bar_chart(
+        &self,
+        x_col: usize,
+        cols: &[usize],
+    ) -> Result<(Vec<String>, ScaleKind)> {
         self.headers.get(x_col).ok_or(Error::ConversionError(
             "Stacked Bar chart: x column out of range".into(),
         ))?;
@@ -972,7 +976,7 @@ impl Sheet {
 
         match kind {
             Some(ColumnType::Number) | Some(ColumnType::Float) | Some(ColumnType::Integer) => {
-                Ok(labels)
+                Ok((labels, kind.unwrap().into()))
             }
             Some(_) => Err(Error::ConversionError(
                 "Stacked Bar Chart Cannot accumulate column type".into(),
@@ -995,9 +999,9 @@ impl Sheet {
         label_strat: LineLabelStrategy,
         exclude_row: HashSet<usize>,
         exclude_column: HashSet<usize>,
-    ) -> Result<LineGraph<String, Data>> {
+    ) -> Result<LineGraph> {
         self.validate()?;
-        self.validate_to_line_graph(&label_strat)?;
+        let scale_kind = self.validate_to_line_graph(&label_strat)?;
 
         if self.is_empty() {
             return Err(Error::ConversionError(
@@ -1005,12 +1009,13 @@ impl Sheet {
             ));
         }
 
-        let x_values: Vec<String> = {
-            let values: Vec<String> = self.headers.iter().map(|hdr| hdr.label.clone()).collect();
-            values
-        };
+        let x_values: Vec<Data> = self
+            .headers
+            .iter()
+            .map(|hdr| Data::Text(hdr.label.clone()))
+            .collect();
 
-        let lines: Vec<Line<String, Data>> = self
+        let lines: Vec<Line> = self
             .iter_rows()
             .enumerate()
             .filter(|(idx, _)| !exclude_row.contains(idx))
@@ -1019,38 +1024,35 @@ impl Sheet {
             .map(|(idx, rw)| rw.create_line(&label_strat, &x_values, &exclude_column, idx))
             .collect();
 
-        let y_scale: Scale<Data> = {
-            let values: HashSet<Data> = lines
+        let y_scale = {
+            let values = lines
                 .iter()
-                .flat_map(|ln| ln.points.iter().map(|pnt| pnt.y.clone()))
-                .collect();
+                .flat_map(|ln| ln.points.iter().map(|pnt| pnt.y.clone()));
 
-            let mut values = values.into_iter().collect::<Vec<Data>>();
-            values.sort();
-
-            Scale::List(values)
+            Scale::new(values, scale_kind)
         };
 
-        let x_scale = {
-            let values: HashSet<String> = match label_strat {
-                LineLabelStrategy::FromCell(ref id) => x_values
-                    .into_iter()
-                    .enumerate()
-                    .filter(|(idx, _)| idx != id && !exclude_column.contains(idx))
-                    .map(|(_, lbl)| lbl)
-                    .collect(),
-                _ => x_values
-                    .into_iter()
-                    .enumerate()
-                    .filter(|(idx, _)| !exclude_column.contains(idx))
-                    .map(|(_, lbl)| lbl)
-                    .collect(),
-            };
-
-            let mut values = values.into_iter().collect::<Vec<String>>();
-            values.sort();
-
-            Scale::List(values)
+        let x_scale = match label_strat {
+            LineLabelStrategy::FromCell(id) => {
+                let values = x_values.into_iter().enumerate().filter_map(|(idx, lbl)| {
+                    if idx != id && !exclude_column.contains(&idx) {
+                        Some(lbl)
+                    } else {
+                        None
+                    }
+                });
+                Scale::new(values, ScaleKind::Text)
+            }
+            _ => {
+                let values = x_values.into_iter().enumerate().filter_map(|(idx, lbl)| {
+                    if !exclude_column.contains(&idx) {
+                        Some(lbl)
+                    } else {
+                        None
+                    }
+                });
+                Scale::new(values, ScaleKind::Text)
+            }
         };
 
         let lg = LineGraph::new(lines, x_label, y_label, x_scale, y_scale)
@@ -1066,8 +1068,8 @@ impl Sheet {
         bar_label: BarChartBarLabels,
         axis_labels: BarChartAxisLabelStrategy,
         exclude_row: HashSet<usize>,
-    ) -> Result<BarChart<Data, Data>> {
-        self.validate_to_barchart(x_col, y_col, &bar_label)?;
+    ) -> Result<BarChart> {
+        let (x_kind, y_kind) = self.validate_to_barchart(x_col, y_col, &bar_label)?;
 
         if self.is_empty() {
             return Err(Error::ConversionError(
@@ -1138,30 +1140,18 @@ impl Sheet {
                 Some(label) => Bar::new(label, point),
                 None => Bar::from_point(point),
             })
-            .collect::<Vec<Bar<Data, Data>>>();
+            .collect::<Vec<Bar>>();
 
         let x_scale = {
-            let values = bars
-                .iter()
-                .map(|bar| bar.point.x.clone())
-                .collect::<HashSet<Data>>();
+            let values = bars.iter().map(|bar| bar.point.x.clone());
 
-            let mut values = values.into_iter().collect::<Vec<Data>>();
-            values.sort();
-
-            Scale::List(values)
+            Scale::new(values, x_kind)
         };
 
         let y_scale = {
-            let values = bars
-                .iter()
-                .map(|bar| bar.point.y.clone())
-                .collect::<HashSet<Data>>();
+            let values = bars.iter().map(|bar| bar.point.y.clone());
 
-            let mut values = values.into_iter().collect::<Vec<Data>>();
-            values.sort();
-
-            Scale::List(values)
+            Scale::new(values, y_kind)
         };
 
         let barchart = BarChart::new(bars, x_scale, y_scale)?;
@@ -1195,7 +1185,7 @@ impl Sheet {
         axis_labels: StackedBarChartAxisLabelStrategy,
     ) -> Result<StackedBarChart> {
         let cols = cols.into();
-        let acc_labels = self.validate_to_stacked_bar_chart(x_col, &cols)?;
+        let (acc_labels, y_kind) = self.validate_to_stacked_bar_chart(x_col, &cols)?;
 
         if self.is_empty() {
             return Err(Error::ConversionError(
@@ -1231,23 +1221,16 @@ impl Sheet {
         }
 
         let x_scale = {
-            let mut values = x_values
-                .collect::<HashSet<Data>>()
-                .into_iter()
-                .collect::<Vec<Data>>();
-            values.sort();
+            let kind = self
+                .headers
+                .get(x_col)
+                .expect("Stacked Bar Chart conversion: Validations failed")
+                .kind;
 
-            Scale::List(values)
+            Scale::new(x_values, kind.into())
         };
 
-        let y_scale = {
-            let values = y_values.into_iter().collect::<HashSet<Data>>();
-
-            let mut values = values.into_iter().collect::<Vec<Data>>();
-            values.sort();
-
-            Scale::List(values)
-        };
+        let y_scale = Scale::new(y_values, y_kind);
 
         let acc_labels = acc_labels.into_iter().collect();
 

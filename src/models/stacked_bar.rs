@@ -1,36 +1,28 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::{self, Debug},
-    hash::Hash,
 };
 
 use super::{Point, Scale};
 use crate::repr::Data;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct StackedBar<X = Data, Y = Data> {
+pub struct StackedBar {
     /// The (x, y) points for the bar
-    pub point: Point<X, Y>,
+    pub point: Point,
     /// The percentage makeup  of the bar. For all
     /// k, v in `fractions` v1 + v2 + v3 + .. = 1.0
     pub fractions: HashMap<String, f64>,
     /// Is true of all points within the bar are negative
     pub is_negative: bool,
     /// The full value of the stacked bar
-    true_y: Y,
+    true_y: Data,
     /// Keeps track of sections removed from the bar
     removed_sections: HashSet<String>,
 }
 
-impl<X, Y> StackedBar<X, Y>
-where
-    Y: Clone,
-{
-    pub(crate) fn new(
-        point: Point<X, Y>,
-        fractions: HashMap<String, f64>,
-        is_negative: bool,
-    ) -> Self {
+impl StackedBar {
+    pub(crate) fn new(point: Point, fractions: HashMap<String, f64>, is_negative: bool) -> Self {
         let true_y = point.y.clone();
         Self {
             point,
@@ -41,7 +33,7 @@ where
         }
     }
 
-    pub fn from_point(point: impl Into<Point<X, Y>>, is_negative: bool) -> Self {
+    pub fn from_point(point: impl Into<Point>, is_negative: bool) -> Self {
         let point = point.into();
         let true_y = point.y.clone();
         Self {
@@ -61,12 +53,10 @@ where
         &self.fractions
     }
 
-    pub fn get_point(&self) -> &Point<X, Y> {
+    pub fn get_point(&self) -> &Point {
         &self.point
     }
-}
 
-impl StackedBar<Data, Data> {
     /// Returns true if the point is empty. For a Stacked bar chart, an empty point
     /// is defined as one which has a y data value of 0 or 0.0
     pub(crate) fn is_empty(&self) -> bool {
@@ -140,40 +130,27 @@ impl StackedBar<Data, Data> {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct StackedBarChart<X = Data, Y = Data>
-where
-    X: Clone + Debug,
-    Y: Clone + Debug,
-{
-    pub bars: Vec<StackedBar<X, Y>>,
+pub struct StackedBarChart {
+    pub bars: Vec<StackedBar>,
     pub x_axis: Option<String>,
     pub y_axis: Option<String>,
     pub labels: HashSet<String>,
-    pub x_scale: Scale<X>,
-    pub y_scale: Scale<Y>,
+    pub x_scale: Scale,
+    pub y_scale: Scale,
     pub has_negatives: bool,
     pub has_positives: bool,
 }
 
 #[allow(dead_code)]
-impl<X, Y> StackedBarChart<X, Y>
-where
-    X: Eq + Clone + Hash + PartialOrd + ToString + Debug,
-    Y: Eq + Clone + Hash + PartialOrd + ToString + Debug,
-{
+impl StackedBarChart {
     pub(crate) fn new(
-        bars: Vec<StackedBar<X, Y>>,
-        x_scale: Scale<X>,
-        y_scale: Scale<Y>,
+        bars: Vec<StackedBar>,
+        x_scale: Scale,
+        y_scale: Scale,
         labels: HashSet<String>,
     ) -> Result<Self, StackedBarChartError> {
-        match &x_scale {
-            Scale::List(scale) => Self::assert_list_scales_x(scale, &bars)?,
-        };
-
-        match &y_scale {
-            Scale::List(scale) => Self::assert_list_scales_y(scale, &bars)?,
-        };
+        Self::assert_x_scale(&x_scale, &bars)?;
+        Self::assert_y_scale(&y_scale, &bars)?;
 
         let has_negatives = bars.iter().any(|bar| bar.is_negative);
 
@@ -190,70 +167,30 @@ where
         })
     }
 
-    fn assert_list_scales_y(
-        lst: &[Y],
-        bars: &[StackedBar<X, Y>],
-    ) -> Result<(), StackedBarChartError> {
-        // Duplicate check and removal
-        let mut lst: Vec<Y> = lst.to_vec();
-        let set: HashSet<Y> = lst.drain(..).collect();
-
-        // Check if all points are on scale.
-        let mut invalid: Option<Y> = None;
-        let valid = bars.iter().fold(true, |acc, curr| {
-            if !acc {
-                return acc;
+    fn assert_x_scale(scale: &Scale, bars: &[StackedBar]) -> Result<(), StackedBarChartError> {
+        for x in bars.iter().map(|bar| &bar.point.x) {
+            if !scale.contains(x) {
+                return Err(StackedBarChartError::OutOfRange(
+                    "X".to_string(),
+                    x.to_string(),
+                ));
             }
-
-            if !set.contains(&curr.point.y) {
-                invalid = Some(curr.point.y.clone());
-                false
-            } else {
-                true
-            }
-        });
-
-        if valid {
-            Ok(())
-        } else {
-            Err(StackedBarChartError::OutOfRange(
-                "Y".into(),
-                invalid.unwrap().to_string(),
-            ))
         }
+
+        Ok(())
     }
 
-    fn assert_list_scales_x(
-        lst: &[X],
-        bars: &[StackedBar<X, Y>],
-    ) -> Result<(), StackedBarChartError> {
-        // Duplicate check and removal
-        let mut lst: Vec<X> = lst.to_vec();
-        let set: HashSet<X> = lst.drain(..).collect();
-
-        let mut invalid: Option<X> = None;
-
-        let valid = bars.iter().fold(true, |acc, curr| {
-            if !acc {
-                return acc;
+    fn assert_y_scale(scale: &Scale, bars: &[StackedBar]) -> Result<(), StackedBarChartError> {
+        for y in bars.iter().map(|bar| &bar.point.y) {
+            if !scale.contains(y) {
+                return Err(StackedBarChartError::OutOfRange(
+                    "Y".to_string(),
+                    y.to_string(),
+                ));
             }
-
-            if !set.contains(&curr.point.x) {
-                invalid = Some(curr.point.x.clone());
-                false
-            } else {
-                true
-            }
-        });
-
-        if valid {
-            Ok(())
-        } else {
-            Err(StackedBarChartError::OutOfRange(
-                "X".into(),
-                invalid.unwrap().to_string(),
-            ))
         }
+
+        Ok(())
     }
 
     pub fn x_axis(mut self, label: impl Into<String>) -> Self {
@@ -275,9 +212,7 @@ where
         self.bars.retain(|bar| bar.is_negative);
         self.has_positives = false;
     }
-}
 
-impl StackedBarChart<Data, Data> {
     /// Returns true any negative bar is not completely empty. For a Stacked bar chart, an empty point
     /// is defined as one which has a y data value of 0 or 0.0
     pub fn has_true_negatives(&self) -> bool {
@@ -344,12 +279,14 @@ impl std::error::Error for StackedBarChartError {}
 
 #[cfg(test)]
 mod stacked_barchart_tests {
+    use crate::models::ScaleKind;
+
     use super::*;
 
-    fn create_barchart<'a>() -> StackedBarChart<&'a str, i32> {
+    fn create_barchart<'a>() -> StackedBarChart {
         let mut bars = Vec::with_capacity(5);
 
-        let pnt = Point::new("One", 19);
+        let pnt = Point::new(Data::Text("One".into()), Data::Integer(19));
 
         let fractions = HashMap::from([
             (String::from("Soda"), 3.0 / 19.0),
@@ -362,7 +299,7 @@ mod stacked_barchart_tests {
 
         bars.push(bar);
 
-        let pnt = Point::new("Two", 19);
+        let pnt = Point::new(Data::Text("Two".into()), Data::Integer(19));
 
         let fractions = HashMap::from([
             (String::from("Soda"), 3.0 / 19.0),
@@ -374,7 +311,7 @@ mod stacked_barchart_tests {
         let bar = StackedBar::new(pnt, fractions, false);
         bars.push(bar);
 
-        let pnt = Point::new("Three", 14);
+        let pnt = Point::new(Data::Text("Three".into()), Data::Integer(14));
 
         let fractions = HashMap::from([
             (String::from("Soda"), 6.0 / 14.0),
@@ -386,7 +323,7 @@ mod stacked_barchart_tests {
         let bar = StackedBar::new(pnt, fractions, false);
         bars.push(bar);
 
-        let pnt = Point::new("Four", 16);
+        let pnt = Point::new(Data::Text("Four".into()), Data::Integer(16));
 
         let fractions = HashMap::from([
             (String::from("Soda"), 3.0 / 16.0),
@@ -398,7 +335,7 @@ mod stacked_barchart_tests {
         let bar = StackedBar::new(pnt, fractions, false);
         bars.push(bar);
 
-        let pnt = Point::new("Five", 19);
+        let pnt = Point::new(Data::Text("Five".into()), Data::Integer(19));
 
         let fractions = HashMap::from([
             (String::from("Soda"), 9.0 / 19.0),
@@ -410,13 +347,13 @@ mod stacked_barchart_tests {
         let bar = StackedBar::new(pnt, fractions, false);
         bars.push(bar);
 
-        let x_scale: Scale<&str> = {
-            let lst = vec!["One", "Two", "Three", "Four", "Five"];
+        let x_scale = {
+            let values = vec!["One", "Two", "Three", "Four", "Five"];
 
-            Scale::List(lst)
+            Scale::new(values, ScaleKind::Text)
         };
 
-        let y_scale: Scale<i32> = Scale::List(vec![14, 16, 19]);
+        let y_scale = vec![14, 16, 19].into();
 
         let labels = HashSet::from([
             (String::from("Soda")),
@@ -431,24 +368,27 @@ mod stacked_barchart_tests {
         }
     }
 
-    fn out_of_range() -> Result<StackedBarChart<isize, isize>, StackedBarChartError> {
+    fn out_of_range() -> Result<StackedBarChart, StackedBarChartError> {
         let xs = [1, 5, 6, 11, 15];
         let ys = [4, 5, 6, 7, 8];
 
         let bars = xs
             .into_iter()
             .zip(ys.into_iter())
-            .map(|point| StackedBar::from_point(point, false))
+            .map(|point| {
+                StackedBar::from_point((Data::Integer(point.0), Data::Integer(point.1)), false)
+            })
             .collect();
 
-        let x_scale: Scale<isize> = {
+        let x_scale = {
             let rng = -5..11;
 
-            Scale::List(rng.collect())
+            Scale::new(rng, ScaleKind::Integer)
         };
-        let y_scale: Scale<isize> = {
+        let y_scale = {
             let rng = 2..10;
-            Scale::List(rng.collect())
+
+            Scale::new(rng, ScaleKind::Integer)
         };
 
         StackedBarChart::new(bars, x_scale, y_scale, HashSet::default())
