@@ -24,11 +24,11 @@ impl<X, Y> From<(X, Y)> for Point<X, Y> {
 ///
 /// Points on a [`ScaleKind::Text`] are treated categorically with all duplicates removed and in an arbitary order. Points on other [`ScaleKind`] are treated numerically as a range
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum ScaleKind {
+pub(crate) enum ScaleKind {
     Number,
     Integer,
     Float,
-    Text,
+    Categorical,
 }
 
 impl From<ColumnType> for ScaleKind {
@@ -37,7 +37,7 @@ impl From<ColumnType> for ScaleKind {
             ColumnType::Number => ScaleKind::Number,
             ColumnType::Integer => ScaleKind::Integer,
             ColumnType::Float => ScaleKind::Float,
-            _ => ScaleKind::Text,
+            _ => ScaleKind::Categorical,
         }
     }
 }
@@ -59,13 +59,19 @@ enum ScaleValues {
         end: f32,
         step: f32,
     },
-    Text(Vec<String>),
+    Categorical(Vec<Data>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Scale {
-    pub kind: ScaleKind,
+    /// The type of scale
+    pub(crate) kind: ScaleKind,
+    /// The values within the scale
     values: ScaleValues,
+    /// The number of points on the scale.
+    ///
+    /// For non-categorical data this is at most one more than the number of
+    /// points used to generate the scale
     pub length: usize,
 }
 
@@ -76,13 +82,11 @@ impl Scale {
     pub(crate) fn new(points: impl IntoIterator<Item = impl Into<Data>>, kind: ScaleKind) -> Self {
         let points = points.into_iter().map(Into::into);
         match kind {
-            ScaleKind::Text => {
-                let values = points
-                    .map(|point| point.to_string())
-                    .collect::<HashSet<String>>();
-                let values = values.into_iter().collect::<Vec<String>>();
+            ScaleKind::Categorical => {
+                let values = points.collect::<HashSet<Data>>();
+                let values = values.into_iter().collect::<Vec<Data>>();
                 let length = values.len();
-                let values = ScaleValues::Text(values);
+                let values = ScaleValues::Categorical(values);
 
                 Self {
                     kind,
@@ -100,7 +104,7 @@ impl Scale {
                             valid.insert(num);
                         }
                         other => {
-                            invalid.insert(other.to_string());
+                            invalid.insert(other);
                         }
                     };
                 }
@@ -117,15 +121,15 @@ impl Scale {
                     }
                 } else if !invalid.is_empty() {
                     for point in valid.into_iter() {
-                        invalid.insert(point.to_string());
+                        invalid.insert(point.into());
                     }
 
-                    let invalid = invalid.into_iter().collect::<Vec<String>>();
+                    let invalid = invalid.into_iter().collect::<Vec<Data>>();
                     let length = invalid.len();
 
                     Self {
-                        kind: ScaleKind::Text,
-                        values: ScaleValues::Text(invalid),
+                        kind: ScaleKind::Categorical,
+                        values: ScaleValues::Categorical(invalid),
                         length,
                     }
                 } else {
@@ -142,7 +146,7 @@ impl Scale {
                             valid.insert(num);
                         }
                         other => {
-                            invalid.insert(other.to_string());
+                            invalid.insert(other);
                         }
                     }
                 }
@@ -159,15 +163,15 @@ impl Scale {
                     }
                 } else if !invalid.is_empty() {
                     for point in valid.into_iter() {
-                        invalid.insert(point.to_string());
+                        invalid.insert(point.into());
                     }
 
-                    let invalid = invalid.into_iter().collect::<Vec<String>>();
+                    let invalid = invalid.into_iter().collect::<Vec<Data>>();
                     let length = invalid.len();
 
                     Self {
-                        kind: ScaleKind::Text,
-                        values: ScaleValues::Text(invalid),
+                        kind: ScaleKind::Categorical,
+                        values: ScaleValues::Categorical(invalid),
                         length,
                     }
                 } else {
@@ -187,7 +191,7 @@ impl Scale {
                             }
                         }
                         other => {
-                            invalid.insert(other.to_string());
+                            invalid.insert(other);
                         }
                     }
                 }
@@ -204,15 +208,15 @@ impl Scale {
                     }
                 } else if !invalid.is_empty() {
                     for point in valid.into_iter() {
-                        invalid.insert(point.to_string());
+                        invalid.insert(point.into());
                     }
 
-                    let invalid = invalid.into_iter().collect::<Vec<String>>();
+                    let invalid = invalid.into_iter().collect::<Vec<Data>>();
                     let length = invalid.len();
 
                     Self {
-                        kind: ScaleKind::Text,
-                        values: ScaleValues::Text(invalid),
+                        kind: ScaleKind::Categorical,
+                        values: ScaleValues::Categorical(invalid),
                         length,
                     }
                 } else {
@@ -222,9 +226,14 @@ impl Scale {
         }
     }
 
+    /// Returns the points on the scale.
+    ///
+    /// Categorical scales return all points used to generate the scale.
+    ///
+    /// Non-Categorical scales return a ordered generated range, guaranteed to contain all initial points.
     pub fn points(&self) -> Vec<Data> {
         match &self.values {
-            ScaleValues::Text(values) => values.iter().cloned().map(Data::Text).collect(),
+            ScaleValues::Categorical(values) => values.clone(),
             ScaleValues::Number { start, step, .. } => {
                 let mut output = Vec::default();
                 let n = self.length as isize;
@@ -261,9 +270,55 @@ impl Scale {
         }
     }
 
+    /// Returns the successive points on the scale. For categorical and floating
+    /// point scales, this is the same as [`Scale::points`]
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use modav_core::{repr::Data, models::Scale};
+    ///
+    /// let scale = Scale::from(vec![1,2,9,10]);
+    /// assert_eq!(scale.ranged(), (1..=10).map(From::from).collect::<Vec<Data>>())
+    ///
+    /// ```
+    pub fn ranged(&self) -> Vec<Data> {
+        match &self.values {
+            ScaleValues::Integer { start, end, .. } => {
+                let range = *start..=*end;
+                range.map(From::from).collect()
+            }
+            ScaleValues::Number { start, end, .. } => {
+                let range = *start..=*end;
+                range.map(From::from).collect()
+            }
+            _ => self.points(),
+        }
+    }
+
+    /// Returns true if the scale contains the given [`Data`].
+    ///
+    /// For non-categorical scales, true is returned if a valid data value falls
+    /// the range min(Scale::points), max(Scale::points).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use modav_core::{repr::Data, models::Scale};
+    ///
+    /// let scale = Scale::from(vec![1,3,4,5]);
+    /// assert!(scale.contains(&Data::Integer(3)));
+    ///
+    /// /// Returns true, even though 2 was not in original scale points
+    /// assert!(scale.contains(&Data::Integer(2)));
+    ///
+    /// /// scale doesn't contain [`Data::Number`]
+    /// assert!(!scale.contains(&Data::Number(3)));
+    ///
+    /// ```
     pub fn contains(&self, value: &Data) -> bool {
         match (&self.values, value) {
-            (ScaleValues::Text(values), Data::Text(val)) => values.contains(val),
+            (ScaleValues::Categorical(values), data) => values.contains(data),
             (ScaleValues::Number { start, step, .. }, Data::Number(num)) => {
                 let end = start + (*step * (self.length - 1) as isize);
                 start <= num && num <= &end
@@ -278,6 +333,11 @@ impl Scale {
             }
             _ => false,
         }
+    }
+
+    /// Returns true if the scale is categorical
+    pub fn is_categorical(&self) -> bool {
+        self.kind == ScaleKind::Categorical
     }
 
     /// Assumes points is not empty
@@ -470,7 +530,7 @@ impl Scale {
     }
 
     pub fn sort(&mut self) {
-        if let ScaleValues::Text(values) = &mut self.values {
+        if let ScaleValues::Categorical(values) = &mut self.values {
             values.sort();
         }
     }
@@ -569,18 +629,18 @@ mod tests {
         assert!(!scale.contains(&Data::Float(0.99)));
 
         let pnts: Vec<isize> = vec![1, 12, 12, 6, 4, 1, 25];
-        let mut scale = Scale::new(pnts, ScaleKind::Text);
+        let mut scale = Scale::new(pnts, ScaleKind::Categorical);
         scale.sort();
 
         assert_eq!(scale.length, 5);
         assert_eq!(
             scale.points(),
             vec![
-                Data::Text("1".into()),
-                Data::Text("12".into()),
-                Data::Text("25".into()),
-                Data::Text("4".into()),
-                Data::Text("6".into()),
+                Data::Number(1),
+                Data::Number(4),
+                Data::Number(6),
+                Data::Number(12),
+                Data::Number(25),
             ]
         );
 
@@ -597,17 +657,16 @@ mod tests {
         assert_eq!(
             scale.points(),
             vec![
-                Data::Text("4".into()),
-                Data::Text("44".into()),
-                Data::Text("<None>".into()),
+                Data::None,
+                Data::Integer(4),
+                Data::Integer(44),
                 Data::Text("Test".into()),
             ]
         );
-        assert!(scale.contains(&Data::Text("44".into())));
-        assert!(!scale.contains(&Data::Integer(44)));
-        assert!(!scale.contains(&Data::None));
+        assert!(!scale.contains(&Data::Text("44".into())));
+        assert!(scale.contains(&Data::Integer(44)));
+        assert!(scale.contains(&Data::None));
         assert!(scale.contains(&Data::Text("Test".into())));
-        assert!(scale.contains(&Data::Text("<None>".into())));
     }
 
     #[test]
@@ -678,5 +737,48 @@ mod tests {
         assert_eq!(scale.length, 1);
         assert_eq!(scale.points(), vec![Data::Integer(0)]);
         assert!(scale.contains(&Data::Integer(0)));
+    }
+
+    #[test]
+    fn test_scale_ranged() {
+        let pnts = vec![1, 2, 9, 10];
+        let scale = Scale::new(pnts, ScaleKind::Integer);
+        let rng = scale.ranged();
+
+        assert_eq!(
+            rng,
+            vec![
+                Data::Integer(1),
+                Data::Integer(2),
+                Data::Integer(3),
+                Data::Integer(4),
+                Data::Integer(5),
+                Data::Integer(6),
+                Data::Integer(7),
+                Data::Integer(8),
+                Data::Integer(9),
+                Data::Integer(10),
+            ]
+        );
+
+        let pnts: Vec<isize> = vec![1, 2, 9, 10];
+        let scale = Scale::new(pnts, ScaleKind::Number);
+        let rng = scale.ranged();
+
+        assert_eq!(
+            rng,
+            vec![
+                Data::Number(1),
+                Data::Number(2),
+                Data::Number(3),
+                Data::Number(4),
+                Data::Number(5),
+                Data::Number(6),
+                Data::Number(7),
+                Data::Number(8),
+                Data::Number(9),
+                Data::Number(10),
+            ]
+        )
     }
 }

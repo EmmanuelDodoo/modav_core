@@ -174,7 +174,7 @@ mod line_tests {
         let y_scale = {
             let values = vec!["one", "two", "three", "four", "five"];
 
-            Scale::new(values, ScaleKind::Text)
+            Scale::new(values, ScaleKind::Categorical)
         };
 
         match LineGraph::new(
