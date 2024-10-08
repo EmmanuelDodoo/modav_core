@@ -1,5 +1,5 @@
 use crate::repr::{ColumnType, Data};
-use std::{collections::HashSet, fmt::Debug, isize};
+use std::{collections::HashSet, fmt::Debug};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Point<X = Data, Y = Data> {
@@ -224,11 +224,7 @@ impl Scale {
 
     pub fn points(&self) -> Vec<Data> {
         match &self.values {
-            ScaleValues::Text(values) => values
-                .iter()
-                .cloned()
-                .map(|value| Data::Text(value))
-                .collect(),
+            ScaleValues::Text(values) => values.iter().cloned().map(Data::Text).collect(),
             ScaleValues::Number { start, step, .. } => {
                 let mut output = Vec::default();
                 let n = self.length as isize;
@@ -416,8 +412,6 @@ impl Scale {
         let mut seen = Vec::default();
 
         for point in points {
-            let point = point;
-
             if !seen.iter().any(|pnt| *pnt == point) {
                 seen.push(point);
             }
@@ -484,19 +478,19 @@ impl Scale {
 
 impl From<Vec<i32>> for Scale {
     fn from(value: Vec<i32>) -> Self {
-        Self::new(value.into_iter(), ScaleKind::Integer)
+        Self::new(value, ScaleKind::Integer)
     }
 }
 
 impl From<Vec<isize>> for Scale {
     fn from(value: Vec<isize>) -> Self {
-        Self::new(value.into_iter(), ScaleKind::Number)
+        Self::new(value, ScaleKind::Number)
     }
 }
 
 impl From<Vec<f32>> for Scale {
     fn from(value: Vec<f32>) -> Self {
-        Self::new(value.into_iter(), ScaleKind::Float)
+        Self::new(value, ScaleKind::Float)
     }
 }
 
@@ -598,9 +592,6 @@ mod tests {
         ];
         let mut scale = Scale::new(pnts, ScaleKind::Integer);
         scale.sort();
-
-        println!("{scale:?}");
-        println!("{:?}", scale.points());
 
         assert_eq!(scale.length, 4);
         assert_eq!(

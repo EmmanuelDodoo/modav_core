@@ -1230,7 +1230,7 @@ impl Sheet {
             Scale::new(x_values, kind.into())
         };
 
-        let y_scale = Scale::new(y_values.into_iter(), y_kind);
+        let y_scale = Scale::new(y_values, y_kind);
 
         let acc_labels = acc_labels.into_iter().collect();
 
