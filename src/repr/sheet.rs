@@ -1041,7 +1041,7 @@ impl Sheet {
                         None
                     }
                 });
-                Scale::new(values, ScaleKind::Text)
+                Scale::new(values, ScaleKind::Categorical)
             }
             _ => {
                 let values = x_values.into_iter().enumerate().filter_map(|(idx, lbl)| {
@@ -1051,7 +1051,7 @@ impl Sheet {
                         None
                     }
                 });
-                Scale::new(values, ScaleKind::Text)
+                Scale::new(values, ScaleKind::Categorical)
             }
         };
 

@@ -350,7 +350,7 @@ mod stacked_barchart_tests {
         let x_scale = {
             let values = vec!["One", "Two", "Three", "Four", "Five"];
 
-            Scale::new(values, ScaleKind::Text)
+            Scale::new(values, ScaleKind::Categorical)
         };
 
         let y_scale = vec![14, 16, 19].into();
