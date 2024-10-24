@@ -44,22 +44,38 @@ impl From<ColumnType> for ScaleKind {
 
 #[derive(Debug, Clone, PartialEq)]
 enum ScaleValues {
+    /// Both ends are inclusive
     Number {
         start: isize,
         end: isize,
         step: isize,
     },
+    /// Both ends are inclusive
     Integer {
         start: i32,
         end: i32,
         step: i32,
     },
+    /// Both ends are inclusive
     Float {
         start: f32,
         end: f32,
         step: f32,
     },
     Categorical(Vec<Data>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+/// Representation of [`Scale`] points on an Axis.
+pub enum AxisPoints {
+    /// Categorical points with no concept of negatives and positives.
+    Categorical(Vec<Data>),
+    /// Numeric points with positive points and negative points split. Zero is
+    /// considered a positive.
+    Numeric {
+        positives: Vec<Data>,
+        negatives: Vec<Data>,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -335,6 +351,98 @@ impl Scale {
         }
     }
 
+    /// Returns the points on the scale as a [`AxisPoints`].
+    ///
+    /// For non-categorical, non-floating point scales, points are generated
+    /// sequentially if `sequential` is true.
+    ///
+    /// Points for non-categorical scales are guaranteed to be in order.
+    pub fn axis_points(&self, sequential: bool) -> AxisPoints {
+        match &self.values {
+            ScaleValues::Categorical(vals) => AxisPoints::Categorical(vals.clone()),
+            ScaleValues::Number { start, end, step } => {
+                let mut pos = vec![];
+                let mut neg = vec![];
+
+                if sequential {
+                    for i in *start..=*end {
+                        if i < 0 {
+                            neg.push(i.into());
+                        } else {
+                            pos.push(i.into());
+                        }
+                    }
+                } else {
+                    let n = self.length as isize;
+
+                    for i in 0..n {
+                        let curr = *start + (i * step);
+                        if curr < 0 {
+                            neg.push(curr.into());
+                        } else {
+                            pos.push(curr.into());
+                        }
+                    }
+                }
+
+                AxisPoints::Numeric {
+                    positives: pos,
+                    negatives: neg,
+                }
+            }
+            ScaleValues::Integer { start, end, step } => {
+                let mut pos = vec![];
+                let mut neg = vec![];
+
+                if sequential {
+                    for i in *start..=*end {
+                        if i < 0 {
+                            neg.push(i.into());
+                        } else {
+                            pos.push(i.into());
+                        }
+                    }
+                } else {
+                    let n = self.length as i32;
+
+                    for i in 0..n {
+                        let curr = *start + (i * step);
+                        if curr < 0 {
+                            neg.push(curr.into());
+                        } else {
+                            pos.push(curr.into());
+                        }
+                    }
+                }
+
+                AxisPoints::Numeric {
+                    positives: pos,
+                    negatives: neg,
+                }
+            }
+            ScaleValues::Float { start, step, .. } => {
+                let mut pos = vec![];
+                let mut neg = vec![];
+
+                let n = self.length;
+
+                for i in 0..n {
+                    let curr = *start + ((i as f32) * step);
+                    if curr < 0.0 {
+                        neg.push(curr.into());
+                    } else {
+                        pos.push(curr.into());
+                    }
+                }
+
+                AxisPoints::Numeric {
+                    positives: pos,
+                    negatives: neg,
+                }
+            }
+        }
+    }
+
     /// Returns true if the scale is categorical
     pub fn is_categorical(&self) -> bool {
         self.kind == ScaleKind::Categorical
@@ -346,13 +454,9 @@ impl Scale {
 
         let mut min = None;
         let mut max = None;
-        let mut has_neg = false;
-        let mut has_pos = false;
 
         for num in deduped.iter() {
             let num = *num;
-            has_neg = num < 0;
-            has_pos = num >= 0;
 
             if let Some(prev) = min {
                 if num < prev {
@@ -371,25 +475,19 @@ impl Scale {
             }
         }
 
-        let len = if has_pos && has_neg {
-            deduped.len() + 1
-        } else {
-            deduped.len()
-        };
+        let mut length = deduped.len();
 
         let min = min.unwrap();
         let max = max.unwrap();
-        let mut step = (max - min) / len as i32;
+        let mut step = (max - min) / length as i32;
 
-        if step * (len as i32) != max - min {
-            step += 1
+        if step * (length as i32) != max - min {
+            step += 1;
         }
 
-        let length = if ((len - 1) as i32) * step + min < max {
-            len + 1
-        } else {
-            len
-        };
+        if ((length - 1) as i32) * step + min < max {
+            length += 1;
+        }
 
         Self {
             kind: ScaleKind::Integer,
@@ -408,13 +506,9 @@ impl Scale {
 
         let mut min = None;
         let mut max = None;
-        let mut has_neg = false;
-        let mut has_pos = false;
 
         for num in deduped.iter() {
             let num = *num;
-            has_neg = num < 0;
-            has_pos = num >= 0;
 
             if let Some(prev) = min {
                 if num < prev {
@@ -433,25 +527,19 @@ impl Scale {
             }
         }
 
-        let len = if has_pos && has_neg {
-            deduped.len() + 1
-        } else {
-            deduped.len()
-        };
+        let mut length = deduped.len();
 
         let min = min.unwrap();
         let max = max.unwrap();
-        let mut step = (max - min) / len as isize;
+        let mut step = (max - min) / length as isize;
 
-        if step * (len as isize) != max - min {
-            step += 1
+        if step * (length as isize) != max - min {
+            step += 1;
         }
 
-        let length = if ((len - 1) as isize) * step + min < max {
-            len + 1
-        } else {
-            len
-        };
+        if ((length - 1) as isize) * step + min < max {
+            length += 1;
+        }
 
         Self {
             kind: ScaleKind::Number,
@@ -467,17 +555,12 @@ impl Scale {
     fn from_f32(points: impl Iterator<Item = f32>) -> Self {
         let mut min = None;
         let mut max = None;
-        let mut has_neg = false;
-        let mut has_pos = false;
         let mut seen = Vec::default();
 
         for point in points {
             if !seen.iter().any(|pnt| *pnt == point) {
                 seen.push(point);
             }
-
-            has_neg = point < 0.0;
-            has_pos = point >= 0.0;
 
             // I'm not quite certain how the < and > would work around NaN,
             if let Some(prev) = min {
@@ -488,7 +571,7 @@ impl Scale {
                 min = Some(point);
             }
 
-            if let Some(prev) = min {
+            if let Some(prev) = max {
                 if point > prev {
                     max = Some(point);
                 }
@@ -499,24 +582,19 @@ impl Scale {
 
         let min = min.unwrap();
         let max = max.unwrap();
+        println!("{min}: {max}");
 
-        let len = if has_pos && has_neg {
-            seen.len() + 1
-        } else {
-            seen.len()
-        };
+        let mut length = seen.len();
 
-        let mut step = (max - min) / len as f32;
+        let mut step = (max - min) / length as f32;
 
-        if step * (len as f32) != max - min {
+        if step * (length as f32) != max - min {
             step += 1.0
         }
 
-        let length = if ((len - 1) as f32) * step + min < max {
-            len + 1
-        } else {
-            len
-        };
+        if ((length - 1) as f32) * step + min < max {
+            length += 1;
+        }
 
         Self {
             kind: ScaleKind::Float,
@@ -585,6 +663,7 @@ mod tests {
     fn test_scale_dedup() {
         let pnts = vec![1, 2, 3, 4, 5];
         let scale = Scale::new(pnts, ScaleKind::Integer);
+        dbg!(&scale);
 
         assert_eq!(scale.length, 5);
         assert_eq!(
@@ -780,5 +859,114 @@ mod tests {
                 Data::Number(10),
             ]
         )
+    }
+
+    #[test]
+    fn test_axis_points() {
+        let pnts = vec![2.0, 5.0, -15.0, 0.0];
+        let scale = Scale::from(pnts);
+
+        assert_eq!(scale.length, 5);
+        assert_eq!(
+            scale.axis_points(true),
+            AxisPoints::Numeric {
+                positives: vec![0.0, 5.0].into_iter().map(From::from).collect(),
+                negatives: vec![-15.0, -10.0, -5.0]
+                    .into_iter()
+                    .map(From::from)
+                    .collect()
+            }
+        );
+
+        let pnts = vec![5.0, 15.0, 0.0];
+        let scale = Scale::from(pnts);
+
+        assert_eq!(
+            scale.axis_points(false),
+            AxisPoints::Numeric {
+                positives: vec![0.0, 5.0, 10.0, 15.0]
+                    .into_iter()
+                    .map(From::from)
+                    .collect(),
+                negatives: vec![]
+            }
+        );
+
+        let pnts = vec![1, 2, 9, 10];
+        let scale = Scale::from(pnts);
+
+        assert_eq!(
+            scale.axis_points(true),
+            AxisPoints::Numeric {
+                positives: (1..=10).map(From::from).collect(),
+                negatives: vec![]
+            }
+        );
+
+        let pnts = vec![1, 2, -9, 10];
+        let scale = Scale::from(pnts);
+
+        assert_eq!(
+            scale.axis_points(true),
+            AxisPoints::Numeric {
+                positives: (0..=10).map(From::from).collect(),
+                negatives: (-9..=-1).map(From::from).collect(),
+            }
+        );
+
+        let pnts = vec![-1, -2, -9, -10];
+        let scale = Scale::from(pnts);
+
+        assert_eq!(
+            scale.axis_points(true),
+            AxisPoints::Numeric {
+                positives: vec![],
+                negatives: (-10..=-1).map(From::from).collect(),
+            }
+        );
+
+        let pnts: Vec<isize> = vec![1, 2, 9, 10];
+        let scale = Scale::from(pnts);
+
+        assert_eq!(
+            scale.axis_points(false),
+            AxisPoints::Numeric {
+                positives: vec![
+                    Data::Number(1),
+                    Data::Number(4),
+                    Data::Number(7),
+                    Data::Number(10),
+                ],
+                negatives: vec![]
+            }
+        );
+
+        let pnts: Vec<isize> = vec![1, 2, -9, 10];
+        let scale = Scale::from(pnts);
+
+        assert_eq!(scale.length, 5);
+        assert_eq!(
+            scale.axis_points(false),
+            AxisPoints::Numeric {
+                positives: vec![Data::Number(1), Data::Number(6), Data::Number(11),],
+                negatives: vec![Data::Number(-9), Data::Number(-4),],
+            }
+        );
+
+        let pnts: Vec<isize> = vec![-1, -2, -9, -10];
+        let scale = Scale::from(pnts);
+
+        assert_eq!(
+            scale.axis_points(false),
+            AxisPoints::Numeric {
+                positives: vec![],
+                negatives: vec![
+                    Data::Number(-10),
+                    Data::Number(-7),
+                    Data::Number(-4),
+                    Data::Number(-1),
+                ],
+            }
+        );
     }
 }
