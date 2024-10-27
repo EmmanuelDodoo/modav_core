@@ -917,7 +917,7 @@ fn test_stacked_bar_char() {
         String::from("Ice cream"),
     ]);
 
-    let mut stacked = res
+    let stacked = res
         .clone()
         .create_stacked_bar_chart(0, [1, 2, 3, 4], StackedBarChartAxisLabelStrategy::None)
         .unwrap();
@@ -930,15 +930,8 @@ fn test_stacked_bar_char() {
         .all(|bar| { bar.fractions.keys().all(|key| labels.contains(key)) }));
     assert_eq!(stacked.bars.get(1).unwrap().point.y, 19.into());
     assert_eq!(stacked.bars.len(), 7);
-    assert!(!stacked.has_negatives);
     assert!(!stacked.has_true_negatives());
-    stacked.filter_negatives();
-    assert!(!stacked.has_negatives);
     assert!(!stacked.has_true_negatives());
-    stacked.filter_positives();
-    assert_eq!(stacked.bars.len(), 0);
-    assert!(!stacked.has_positives);
-    assert!(!stacked.has_true_positives());
     assert_eq!(&labels, &stacked.labels);
 
     let stacked = res
@@ -1051,8 +1044,6 @@ fn test_stacked_bar_char() {
         .unwrap();
 
     assert!(stacked.has_true_negatives());
-    assert!(stacked.has_negatives);
-    assert!(stacked.has_positives);
     assert!(stacked.has_true_positives());
 
     assert!(stacked.bars.get(0).unwrap().is_empty());

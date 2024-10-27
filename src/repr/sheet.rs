@@ -1181,10 +1181,15 @@ impl Sheet {
     pub fn create_stacked_bar_chart(
         self,
         x_col: usize,
-        cols: impl Into<Vec<usize>>,
+        cols: impl IntoIterator<Item = usize>,
         axis_labels: StackedBarChartAxisLabelStrategy,
     ) -> Result<StackedBarChart> {
-        let cols = cols.into();
+        let cols = cols
+            .into_iter()
+            .collect::<HashSet<usize>>()
+            .into_iter()
+            .collect::<Vec<usize>>();
+
         let (acc_labels, y_kind) = self.validate_to_stacked_bar_chart(x_col, &cols)?;
 
         if self.is_empty() {
@@ -1215,9 +1220,6 @@ impl Sheet {
                 bars.push(neg.0);
                 y_values.push(neg.1);
             }
-
-            //y_values.extend(ys);
-            //bars.extend(bar);
         }
 
         let x_scale = {
