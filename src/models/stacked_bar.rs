@@ -137,8 +137,6 @@ pub struct StackedBarChart {
     pub labels: HashSet<String>,
     pub x_scale: Scale,
     pub y_scale: Scale,
-    pub has_negatives: bool,
-    pub has_positives: bool,
 }
 
 #[allow(dead_code)]
@@ -152,9 +150,6 @@ impl StackedBarChart {
         Self::assert_x_scale(&x_scale, &bars)?;
         Self::assert_y_scale(&y_scale, &bars)?;
 
-        let has_negatives = bars.iter().any(|bar| bar.is_negative);
-
-        let has_positives = bars.iter().any(|bar| !bar.is_negative);
         Ok(Self {
             x_scale,
             y_scale,
@@ -162,8 +157,6 @@ impl StackedBarChart {
             x_axis: None,
             y_axis: None,
             labels,
-            has_negatives,
-            has_positives,
         })
     }
 
@@ -201,16 +194,6 @@ impl StackedBarChart {
     pub fn y_axis(mut self, label: impl Into<String>) -> Self {
         self.y_axis = Some(label.into());
         self
-    }
-
-    pub fn filter_negatives(&mut self) {
-        self.bars.retain(|bar| !bar.is_negative);
-        self.has_negatives = false;
-    }
-
-    pub fn filter_positives(&mut self) {
-        self.bars.retain(|bar| bar.is_negative);
-        self.has_positives = false;
     }
 
     /// Returns true any negative bar is not completely empty. For a Stacked bar chart, an empty point
