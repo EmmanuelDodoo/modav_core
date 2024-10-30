@@ -92,6 +92,10 @@ impl Row {
         }
     }
 
+    fn width(&self) -> usize {
+        self.cells.len()
+    }
+
     fn is_key_valid(&self, key: usize) -> bool {
         self.cells.len() > key
     }
@@ -513,6 +517,19 @@ impl Sheet {
         sh.validate()?;
 
         Ok(sh)
+    }
+
+    /// Returns the width of the [`Sheet`].
+    pub fn width(&self) -> usize {
+        self.rows.first().map(|row| row.width()).unwrap_or(0)
+    }
+
+    /// Returns the height of the [`Sheet`].
+    ///
+    /// A [`Sheet`]'s height is equivalent to the number of rows present within
+    /// it
+    pub fn height(&self) -> usize {
+        self.rows.len()
     }
 
     pub fn get_row_by_index(&self, index: usize) -> Option<&Row> {
