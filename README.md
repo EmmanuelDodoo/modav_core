@@ -24,19 +24,13 @@ I plan to support the most common dataset operations, models and data formats. I
 
 - Line Charts
 
-![1000176607.jpg](images/line.jpg)
-
 - Tables
-
-![table.png](images/table.png)
 
 - Bar graphs
 
-![Untitled](images/bar.png)
+- Stacked Bar graphs
 
 - Tree graphs
-
-![graph.png](images/graph.png)
 
 ## Further Documentation
 
