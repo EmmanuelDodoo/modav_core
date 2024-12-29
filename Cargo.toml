@@ -8,3 +8,6 @@ repository = "https://github.com/EmmanuelDodoo/modav_core"
 
 [dependencies]
 csv = "1.3.0"
+
+[features]
+arrow = []
