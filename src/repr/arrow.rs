@@ -20,3 +20,6 @@ pub use arrayf64::*;
 
 pub mod arraybool;
 pub use arraybool::*;
+
+pub mod arraytext;
+pub use arraytext::*;
