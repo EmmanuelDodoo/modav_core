@@ -23,3 +23,6 @@ pub use arraybool::*;
 
 pub mod arraytext;
 pub use arraytext::*;
+
+pub mod union;
+pub use union::*;
