@@ -14,3 +14,6 @@ pub use arrayisize::*;
 
 pub mod arrayf32;
 pub use arrayf32::*;
+
+pub mod arrayf64;
+pub use arrayf64::*;
