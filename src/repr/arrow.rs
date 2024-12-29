@@ -11,3 +11,6 @@ pub use arrayi32::*;
 
 pub mod arrayisize;
 pub use arrayisize::*;
+
+pub mod arrayf32;
+pub use arrayf32::*;
