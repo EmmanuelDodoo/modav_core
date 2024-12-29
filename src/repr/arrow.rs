@@ -17,3 +17,6 @@ pub use arrayf32::*;
 
 pub mod arrayf64;
 pub use arrayf64::*;
+
+pub mod arraybool;
+pub use arraybool::*;
