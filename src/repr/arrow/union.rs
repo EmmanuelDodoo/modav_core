@@ -695,7 +695,7 @@ impl Array for Union {
         }
 
         if self.check_null(idx) {
-            return None;
+            return Some(UnionRef::Null);
         }
 
         let offsets_ptr = self.offsets_ptr?;
