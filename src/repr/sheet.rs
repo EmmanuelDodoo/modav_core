@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    path::PathBuf,
+    path::Path,
     slice::{Iter, IterMut},
 };
 
@@ -19,6 +19,7 @@ pub use error::*;
 pub mod utils;
 pub use utils::*;
 pub mod builders;
+use builders::SheetBuilder;
 mod tests;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -419,16 +420,27 @@ impl Sheet {
         }
     }
 
-    /// Create a new sheet given the path to a csv file
-    pub fn new(
-        path: PathBuf,
-        primary: usize,
-        label_strategy: HeaderLabelStrategy,
-        type_strategy: HeaderTypesStrategy,
-        trim: bool,
-        flexible: bool,
-        delimiter: u8,
-    ) -> Result<Self> {
+    /// Creates a new [`Sheet`] with the provided `path`.
+    ///
+    /// The default [`SheetBuilder`] is used.
+    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let builder = SheetBuilder::new(path);
+
+        Self::from_builder(builder)
+    }
+
+    /// Create a new [`Sheet`] given a [`SheetBuilder`].
+    pub fn from_builder<P: AsRef<Path>>(builder: SheetBuilder<P>) -> Result<Self> {
+        let SheetBuilder {
+            path,
+            flexible,
+            trim,
+            delimiter,
+            label_strategy,
+            type_strategy,
+            primary,
+        } = builder;
+
         let mut counter: usize = 0;
         let mut longest_row = 0;
 
@@ -445,6 +457,7 @@ impl Sheet {
                 Trim::None
             }
         };
+
         let mut rdr = csv::ReaderBuilder::new()
             .has_headers(has_headers)
             .trim(trim)
