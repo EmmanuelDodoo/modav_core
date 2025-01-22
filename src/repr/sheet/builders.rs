@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 
 use super::{
     error::*,
@@ -7,18 +7,18 @@ use super::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct SheetBuilder {
-    path: PathBuf,
-    primary: usize,
-    trim: bool,
-    label_strategy: HeaderLabelStrategy,
-    flexible: bool,
-    type_strategy: HeaderTypesStrategy,
-    delimiter: u8,
+pub struct SheetBuilder<P: AsRef<Path>> {
+    pub(crate) path: P,
+    pub(crate) primary: usize,
+    pub(crate) trim: bool,
+    pub(crate) label_strategy: HeaderLabelStrategy,
+    pub(crate) flexible: bool,
+    pub(crate) type_strategy: HeaderTypesStrategy,
+    pub(crate) delimiter: u8,
 }
 
-impl SheetBuilder {
-    pub fn new(path: PathBuf) -> Self {
+impl<P: AsRef<Path>> SheetBuilder<P> {
+    pub fn new(path: P) -> Self {
         Self {
             path,
             primary: 0,
@@ -62,14 +62,6 @@ impl SheetBuilder {
     }
 
     pub fn build(self) -> Result<Sheet> {
-        Sheet::new(
-            self.path,
-            self.primary,
-            self.label_strategy,
-            self.type_strategy,
-            self.trim,
-            self.flexible,
-            self.delimiter,
-        )
+        Sheet::from_builder(self)
     }
 }
