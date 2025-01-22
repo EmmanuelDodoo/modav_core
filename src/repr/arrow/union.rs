@@ -622,7 +622,7 @@ impl Union {
         };
 
         // Types
-        let types_size = (len + 7) / 8;
+        let types_size = len;
         let types_layout = Layout::from_size_align(types_size, 8)
             .expect("Union: types size overflowed isize::max");
 
