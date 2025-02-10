@@ -1,4 +1,4 @@
-use super::{parse_helper, Column, DataType, Iter, Sealed};
+use super::{parse_helper, Column, DataType, Iter, IterMut, Sealed};
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ArrayI32 {
@@ -34,8 +34,16 @@ impl ArrayI32 {
         self.cells.get(idx)?.as_ref().copied()
     }
 
+    pub fn get_mut(&mut self, idx: usize) -> Option<&mut i32> {
+        self.cells.get_mut(idx)?.as_mut()
+    }
+
     pub fn iter(&self) -> Iter<'_, Option<i32>> {
         self.cells.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> IterMut<'_, Option<i32>> {
+        self.cells.iter_mut()
     }
 
     pub fn parse_str(values: &Vec<String>) -> Option<Self> {
@@ -99,7 +107,7 @@ impl Column for ArrayI32 {
         self.header = Some(header);
     }
 
-    fn set_position(&mut self, value: &str, idx: usize) {
+    fn set_position<'a>(&mut self, value: &'a str, idx: usize) {
         let Ok(parsed) = parse_helper::<i32>(value) else {
             return;
         };

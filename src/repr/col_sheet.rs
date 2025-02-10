@@ -1,5 +1,10 @@
 use csv::{ReaderBuilder, Trim};
-use std::{fmt::Debug, path::Path, slice::Iter, str::FromStr};
+use std::{
+    fmt::Debug,
+    path::Path,
+    slice::{Iter, IterMut},
+    str::FromStr,
+};
 
 #[allow(unused_imports)]
 use crate::models::{
@@ -38,59 +43,6 @@ pub enum DataType {
     Text,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum Union {
-    I32(i32),
-    U32(u32),
-    ISize(isize),
-    USize(usize),
-    Boolean(bool),
-    F32(f32),
-    F64(f64),
-    Text(String),
-    Null,
-}
-
-impl Union {
-    pub fn parse(input: impl Into<String>) -> Self {
-        let input: String = input.into();
-
-        if input.is_empty() || input == *NULL {
-            return Self::Null;
-        }
-
-        if let Ok(parsed_u32) = input.parse::<u32>() {
-            return Self::U32(parsed_u32);
-        }
-
-        if let Ok(parsed_i32) = input.parse::<i32>() {
-            return Self::I32(parsed_i32);
-        }
-
-        if let Ok(parsed_usize) = input.parse::<usize>() {
-            return Self::USize(parsed_usize);
-        }
-
-        if let Ok(parsed_isize) = input.parse::<isize>() {
-            return Self::ISize(parsed_isize);
-        }
-
-        if let Ok(parsed_f32) = input.parse::<f32>() {
-            return Self::F32(parsed_f32);
-        }
-
-        if let Ok(parsed_f64) = input.parse::<f64>() {
-            return Self::F64(parsed_f64);
-        }
-
-        if let Ok(parsed_bool) = input.parse::<bool>() {
-            return Self::Boolean(parsed_bool);
-        };
-
-        Self::Text(input)
-    }
-}
-
 pub trait Column: Sealed + Debug {
     fn label(&self) -> Option<&String>;
 
@@ -106,7 +58,7 @@ pub trait Column: Sealed + Debug {
 
     /// Overwrites the value at `idx` with successfully parsed `value`. If
     /// parsing fails, `idx` is left as-is.
-    fn set_position(&mut self, value: &str, idx: usize);
+    fn set_position<'a>(&mut self, value: &'a str, idx: usize);
 
     /// Swaps the value at `x` with that at `y`.
     ///

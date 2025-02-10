@@ -1,4 +1,4 @@
-use super::{parse_helper, private::Sealed, Column, DataType, Iter};
+use super::{parse_helper, Column, DataType, Iter, IterMut, Sealed};
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ArrayText {
@@ -34,12 +34,20 @@ impl ArrayText {
         self.cells.get(idx)?.as_ref().cloned()
     }
 
+    pub fn get_mut(&mut self, idx: usize) -> Option<&mut String> {
+        self.cells.get_mut(idx)?.as_mut()
+    }
+
     pub fn get_ref(&self, idx: usize) -> Option<&String> {
         self.cells.get(idx)?.as_ref()
     }
 
     pub fn iter(&self) -> Iter<'_, Option<String>> {
         self.cells.iter()
+    }
+
+    pub fn iter_mut(&mut self) -> IterMut<'_, Option<String>> {
+        self.cells.iter_mut()
     }
 
     pub fn parse_str(values: Vec<String>) -> Self {
@@ -106,7 +114,7 @@ impl Column for ArrayText {
         self.set_header(header);
     }
 
-    fn set_position(&mut self, value: &str, idx: usize) {
+    fn set_position<'a>(&mut self, value: &'a str, idx: usize) {
         let Ok(parsed) = parse_helper::<String>(value) else {
             return;
         };
