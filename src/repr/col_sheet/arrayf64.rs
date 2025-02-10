@@ -1,24 +1,24 @@
 use super::{parse_helper, Column, DataType, Iter, IterMut, Sealed};
 
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct ArrayI32 {
+pub struct ArrayF64 {
     header: Option<String>,
-    cells: Vec<Option<i32>>,
+    cells: Vec<Option<f64>>,
 }
 
-impl ArrayI32 {
+impl ArrayF64 {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn from_iterator(values: impl Iterator<Item = i32>) -> Self {
+    pub fn from_iterator(values: impl Iterator<Item = f64>) -> Self {
         Self {
             cells: values.map(Some).collect(),
             ..Default::default()
         }
     }
 
-    pub fn from_iterator_option(values: impl Iterator<Item = Option<i32>>) -> Self {
+    pub fn from_iterator_option(values: impl Iterator<Item = Option<f64>>) -> Self {
         Self {
             cells: values.collect(),
             ..Default::default()
@@ -30,19 +30,19 @@ impl ArrayI32 {
         self
     }
 
-    pub fn get(&self, idx: usize) -> Option<i32> {
+    pub fn get(&self, idx: usize) -> Option<f64> {
         self.cells.get(idx)?.as_ref().copied()
     }
 
-    pub fn get_mut(&mut self, idx: usize) -> Option<&mut i32> {
+    pub fn get_mut(&mut self, idx: usize) -> Option<&mut f64> {
         self.cells.get_mut(idx)?.as_mut()
     }
 
-    pub fn iter(&self) -> Iter<'_, Option<i32>> {
+    pub fn iter(&self) -> Iter<'_, Option<f64>> {
         self.cells.iter()
     }
 
-    pub fn iter_mut(&mut self) -> IterMut<'_, Option<i32>> {
+    pub fn iter_mut(&mut self) -> IterMut<'_, Option<f64>> {
         self.cells.iter_mut()
     }
 
@@ -50,7 +50,7 @@ impl ArrayI32 {
         let mut cells = Vec::default();
 
         for value in values {
-            let value = parse_helper::<i32>(value).ok()?;
+            let value = parse_helper::<f64>(value).ok()?;
             cells.push(value)
         }
 
@@ -61,9 +61,9 @@ impl ArrayI32 {
     }
 }
 
-impl Sealed for ArrayI32 {
+impl Sealed for ArrayF64 {
     fn push(&mut self, value: &str) {
-        let value = match parse_helper::<i32>(value) {
+        let value = match parse_helper::<f64>(value) {
             Ok(val) => val,
             Err(_) => None,
         };
@@ -82,7 +82,7 @@ impl Sealed for ArrayI32 {
             return;
         }
 
-        let Ok(parsed) = parse_helper::<i32>(value) else {
+        let Ok(parsed) = parse_helper::<f64>(value) else {
             return;
         };
 
@@ -90,13 +90,13 @@ impl Sealed for ArrayI32 {
     }
 }
 
-impl Column for ArrayI32 {
+impl Column for ArrayF64 {
     fn label(&self) -> Option<&String> {
         self.header.as_ref()
     }
 
     fn kind(&self) -> DataType {
-        DataType::I32
+        DataType::F64
     }
 
     fn len(&self) -> usize {
@@ -108,7 +108,7 @@ impl Column for ArrayI32 {
     }
 
     fn set_position<'a>(&mut self, value: &'a str, idx: usize) {
-        let Ok(parsed) = parse_helper::<i32>(value) else {
+        let Ok(parsed) = parse_helper::<f64>(value) else {
             return;
         };
 
