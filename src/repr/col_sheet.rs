@@ -16,6 +16,8 @@ use crate::models::{
 mod utils;
 pub use utils::*;
 
+pub use error::*;
+
 mod arraytext;
 pub use arraytext::*;
 
@@ -90,11 +92,11 @@ pub struct ColumnSheet {
 }
 
 impl ColumnSheet {
-    pub fn from_path<P: AsRef<Path>>(path: P) -> Self {
+    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self> {
         Self::from_builder(SheetBuilder::new(path))
     }
 
-    pub fn from_builder<P: AsRef<Path>>(builder: SheetBuilder<P>) -> Self {
+    pub fn from_builder<P: AsRef<Path>>(builder: SheetBuilder<P>) -> Result<Self> {
         let SheetBuilder {
             path,
             primary,
@@ -113,15 +115,14 @@ impl ColumnSheet {
             .trim(trim)
             .delimiter(delimiter)
             .flexible(flexible)
-            .from_path(path)
-            .unwrap();
+            .from_path(path)?;
 
-        let mut cols = {
+        let (mut cols, max_rows) = {
             let mut cols: Vec<Vec<String>> = Vec::default();
             let mut row_len = 0;
 
             for (rows, record) in rdr.records().enumerate() {
-                let record = record.unwrap();
+                let record = record?;
                 let len = record.len();
 
                 for (idx, record) in record.into_iter().enumerate() {
@@ -137,24 +138,21 @@ impl ColumnSheet {
                     };
                 }
 
-                for col in len..row_len {
-                    let col = cols.get_mut(col).expect("Cannot see this failing. lol");
-                    col.push(String::default())
-                }
-
                 if len > row_len {
                     row_len = len
                 }
             }
-            cols
+            (cols, row_len)
         };
+
+        cols.iter_mut()
+            .for_each(|col| col.resize_with(max_rows, Default::default));
 
         let mut headers = match label_strategy {
             HeaderLabelStrategy::NoLabels => vec![None; cols.len()],
             HeaderLabelStrategy::Provided(headers) => headers.into_iter().map(Some).collect(),
             HeaderLabelStrategy::ReadLabels => rdr
-                .headers()
-                .unwrap()
+                .headers()?
                 .into_iter()
                 .map(|header| {
                     if header.is_empty() {
@@ -177,7 +175,7 @@ impl ColumnSheet {
             Some(primary)
         };
 
-        Self { columns, primary }
+        Ok(Self { columns, primary })
     }
 
     /// Constructs columns from inputs. Expects the length of `cols` and
@@ -244,12 +242,14 @@ impl ColumnSheet {
     /// Sets the primary column of the [`ColumnSheet`].
     ///
     /// If `primary` is invalid, no change is made.
-    pub fn set_primary(&mut self, primary: usize) {
+    pub fn set_primary(&mut self, primary: usize) -> Result<()> {
         if primary >= self.width() {
-            return;
+            return Err(Error::InvalidPrimary(primary));
         }
 
         self.primary = Some(primary);
+
+        Ok(())
     }
 
     /// Returns a shared reference to the column at `idx`, if any.
@@ -270,30 +270,26 @@ impl ColumnSheet {
     /// Appends a column to the back of the [`ColumnSheet`]
     ///
     /// No append occurs if `column` is not of the same height as `Self`.
-    pub fn push_col(&mut self, column: Box<dyn Column>) {
+    pub fn push_col(&mut self, column: Box<dyn Column>) -> Result<()> {
         self.insert_col(column, self.width())
     }
 
     /// Appends a row to the back of the [`ColumnSheet`]
     ///
     /// No append occurs if `row` is not of the same width as `Self`.
-    pub fn push_row<I, R>(&mut self, row: R)
+    pub fn push_row<I, R>(&mut self, row: R) -> Result<()>
     where
         I: AsRef<str>,
         R: ExactSizeIterator<Item = I>,
     {
-        self.insert_row(row, self.height());
+        self.insert_row(row, self.height())
     }
 
     /// Removes the column at `idx` shifting all values to the left
     ///
     /// No remove occurs if `idx` is invalid
-    pub fn remove_col(&mut self, idx: usize) {
-        if idx >= self.width() {
-            return;
-        }
-        // Guaranteed by index check above
-        let primary = self.primary.unwrap();
+    pub fn remove_col(&mut self, idx: usize) -> Result<()> {
+        let primary = self.primary.ok_or(Error::InvalidColumn(idx))?;
 
         self.columns.remove(idx);
 
@@ -304,34 +300,41 @@ impl ColumnSheet {
         } else if idx == primary && primary != 0 {
             self.primary = Some(primary - 1);
         }
+
+        Ok(())
     }
 
     /// Removes the row at `idx` shifting all values to the up
     ///
     /// No remove occurs if `idx` is invalid
-    pub fn remove_row(&mut self, idx: usize) {
+    pub fn remove_row(&mut self, idx: usize) -> Result<()> {
         if idx >= self.height() {
-            return;
+            return Err(Error::InvalidRow(idx));
         }
 
         self.columns
             .iter_mut()
             .for_each(|column| column.remove(idx));
+
+        Ok(())
     }
 
     /// Inserts a column at `idx` shifting all values after right
     ///
     /// No insertion occurs if `column` has a different height than `Self`.
-    pub fn insert_col(&mut self, column: Box<dyn Column>, idx: usize) {
-        if column.len() != self.height() && !self.is_empty() {
-            return;
+    pub fn insert_col(&mut self, column: Box<dyn Column>, idx: usize) -> Result<()> {
+        let other = column.len();
+        let own = self.height();
+
+        if other != own && !self.is_empty() {
+            return Err(Error::InvalidColumnHeight { own, other });
         }
 
         self.columns.insert(idx, column);
 
         if self.width() == 1 {
             self.primary = Some(0);
-            return;
+            return Ok(());
         }
         // self.primary is always a Some, unless self is empty. If self was
         // empty before insertion, the check right above would have caught that.
@@ -341,18 +344,23 @@ impl ColumnSheet {
         if idx <= primary {
             self.primary = Some(primary + 1);
         }
+
+        Ok(())
     }
 
     /// Inserts a row at `idx` shifting all values after down
     ///
     /// No insertion occurs if `row` has a different width than `Self`.
-    pub fn insert_row<I, R>(&mut self, row: R, idx: usize)
+    pub fn insert_row<I, R>(&mut self, row: R, idx: usize) -> Result<()>
     where
         I: AsRef<str>,
         R: ExactSizeIterator<Item = I>,
     {
-        if row.len() != self.width() && !self.is_empty() {
-            return;
+        let own = self.width();
+        let other = row.len();
+
+        if other != own && !self.is_empty() {
+            return Err(Error::InvalidRowWidth { own, other });
         }
 
         if self.is_empty() {
@@ -373,14 +381,20 @@ impl ColumnSheet {
                 .zip(row)
                 .for_each(|(column, value)| column.insert(value.as_ref(), idx));
         }
+
+        Ok(())
     }
 
     /// Swaps the columns at `x` with those at `y`.
     ///
     /// Values are left unchanged if any one of the indices are invalid
-    pub fn swap_cols(&mut self, x: usize, y: usize) {
-        if x >= self.width() || y >= self.width() {
-            return;
+    pub fn swap_cols(&mut self, x: usize, y: usize) -> Result<()> {
+        if x >= self.width() {
+            return Err(Error::InvalidColumn(x));
+        }
+
+        if y >= self.width() {
+            return Err(Error::InvalidColumn(y));
         }
 
         self.columns.swap(x, y);
@@ -392,18 +406,27 @@ impl ColumnSheet {
                 self.primary = Some(x)
             }
         }
+
+        Ok(())
     }
 
     /// Swaps the values at row `x` with those at row `y`.
     ///
     /// Values are left unchanged if any one of the indices are invalid
-    pub fn swap_rows(&mut self, x: usize, y: usize) {
+    pub fn swap_rows(&mut self, x: usize, y: usize) -> Result<()> {
         let height = self.height();
-        if x >= height || y >= height {
-            return;
+
+        if x >= height {
+            return Err(Error::InvalidRow(x));
+        }
+
+        if y >= height {
+            return Err(Error::InvalidRow(y));
         }
 
         self.columns.iter_mut().for_each(|col| col.swap(x, y));
+
+        Ok(())
     }
 }
 
@@ -541,6 +564,57 @@ fn parse_column(col: Vec<String>, header: Option<String>, strategy: ColumnType) 
     }
 }
 
+mod error {
+    use csv::Error as CSVError;
+    use std::{error, fmt};
+
+    #[derive(Debug)]
+    pub enum Error {
+        CSV(CSVError),
+        InvalidColumn(usize),
+        InvalidRow(usize),
+        InvalidPrimary(usize),
+        InvalidColumnHeight { own: usize, other: usize },
+        InvalidRowWidth { own: usize, other: usize },
+    }
+
+    impl From<CSVError> for Error {
+        fn from(value: CSVError) -> Self {
+            Self::CSV(value)
+        }
+    }
+
+    impl fmt::Display for Error {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                Self::CSV(error) => error.fmt(f),
+                Self::InvalidRow(row) => write!(f, "Invalid Row at {row}"),
+                Self::InvalidColumn(col) => write!(f, "Invalid Column at {col}"),
+                Self::InvalidPrimary(primary) => write!(f, "Invalid Primary Column at {primary}"),
+                Self::InvalidColumnHeight { own, other } => {
+                    write!(f, "Invalid Column height of {other} instead of {own}")
+                }
+                Self::InvalidRowWidth { own, other } => {
+                    write!(f, "Invalid Row width of {other} instead of {own}")
+                }
+            }
+        }
+    }
+
+    impl error::Error for Error {
+        fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+            if let Self::CSV(error) = self {
+                error.source()
+            } else {
+                None
+            }
+        }
+    }
+
+    /// A short hand alias for `Sheet` error results
+    pub type Result<T> = core::result::Result<T, Error>;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -556,7 +630,7 @@ mod tests {
             .flexible(false)
             .trim(true);
 
-        let sht = ColumnSheet::from_builder(builder);
+        let sht = ColumnSheet::from_builder(builder).unwrap();
 
         for column in sht.iter() {
             dbg!(column);
