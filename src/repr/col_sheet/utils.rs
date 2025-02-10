@@ -32,7 +32,7 @@ pub trait Column: Sealed + Debug {
 
     /// Overwrites the value at `idx` with successfully parsed `value`. If
     /// parsing fails, `idx` is left as-is.
-    fn set_position<'a>(&mut self, value: &'a str, idx: usize);
+    fn set_position(&mut self, value: &str, idx: usize);
 
     /// Swaps the value at `x` with that at `y`.
     ///

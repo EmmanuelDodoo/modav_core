@@ -102,7 +102,7 @@ impl Column for ArrayI32 {
         self.header = Some(header);
     }
 
-    fn set_position<'a>(&mut self, value: &'a str, idx: usize) {
+    fn set_position(&mut self, value: &str, idx: usize) {
         let parsed = parse_unchecked::<i32>(value);
 
         let Some(prev) = self.cells.get_mut(idx) else {

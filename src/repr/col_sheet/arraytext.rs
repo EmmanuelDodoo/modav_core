@@ -106,7 +106,7 @@ impl Column for ArrayText {
         self.set_header(header);
     }
 
-    fn set_position<'a>(&mut self, value: &'a str, idx: usize) {
+    fn set_position(&mut self, value: &str, idx: usize) {
         let parsed = parse_helper(value).unwrap_or_default();
 
         let Some(prev) = self.cells.get_mut(idx) else {

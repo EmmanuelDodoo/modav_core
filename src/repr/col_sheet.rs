@@ -74,9 +74,7 @@ impl Iterator for StrategyIter {
         self.idx += 1;
 
         match &self.strat {
-            TypesStrategy::Provided(headers) => {
-                headers.get(idx).copied().map(|ct| ColumnType::Type(ct))
-            }
+            TypesStrategy::Provided(headers) => headers.get(idx).copied().map(ColumnType::Type),
             TypesStrategy::None => Some(ColumnType::None),
             TypesStrategy::Infer => Some(ColumnType::Infer),
         }
@@ -295,8 +293,6 @@ impl ColumnSheet {
 
         if self.is_empty() {
             self.primary = None;
-        } else if idx < primary {
-            self.primary = Some(primary - 1);
         } else if idx == primary && primary != 0 {
             self.primary = Some(primary - 1);
         }
