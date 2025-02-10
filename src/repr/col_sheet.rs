@@ -43,7 +43,7 @@ mod arraybool;
 pub use arraybool::*;
 
 use super::builders::SheetBuilder;
-use super::utils::{ColumnType as CT, HeaderLabelStrategy, HeaderTypesStrategy};
+use super::utils::{ColumnType as CT, HeaderLabelStrategy, TypesStrategy};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum ColumnType {
@@ -53,12 +53,12 @@ enum ColumnType {
 }
 
 struct StrategyIter {
-    strat: HeaderTypesStrategy,
+    strat: TypesStrategy,
     idx: usize,
 }
 
 impl StrategyIter {
-    fn new(value: HeaderTypesStrategy) -> Self {
+    fn new(value: TypesStrategy) -> Self {
         Self {
             strat: value,
             idx: 0,
@@ -74,11 +74,11 @@ impl Iterator for StrategyIter {
         self.idx += 1;
 
         match &self.strat {
-            HeaderTypesStrategy::Provided(headers) => {
+            TypesStrategy::Provided(headers) => {
                 headers.get(idx).copied().map(|ct| ColumnType::Type(ct))
             }
-            HeaderTypesStrategy::None => Some(ColumnType::None),
-            HeaderTypesStrategy::Infer => Some(ColumnType::Infer),
+            TypesStrategy::None => Some(ColumnType::None),
+            TypesStrategy::Infer => Some(ColumnType::Infer),
         }
     }
 }
@@ -183,7 +183,7 @@ impl ColumnSheet {
     fn create_columns(
         cols: Vec<Vec<String>>,
         headers: Vec<Option<String>>,
-        type_strategy: HeaderTypesStrategy,
+        type_strategy: TypesStrategy,
     ) -> Vec<Box<dyn Column>> {
         // Dropping extra unused headers is most likely okay so the less than
         // comparison is okay.
@@ -368,7 +368,7 @@ impl ColumnSheet {
                 .map(|value| vec![value.as_ref().to_owned()])
                 .collect::<Vec<Vec<String>>>();
             let len = cols.len();
-            let columns = Self::create_columns(cols, vec![None; len], HeaderTypesStrategy::Infer);
+            let columns = Self::create_columns(cols, vec![None; len], TypesStrategy::Infer);
 
             self.columns = columns;
 
@@ -625,7 +625,7 @@ mod tests {
         let path = "./dummies/csv/empty.csv";
 
         let builder = SheetBuilder::new(path)
-            .types(HeaderTypesStrategy::Infer)
+            .types(TypesStrategy::Infer)
             .labels(HeaderLabelStrategy::ReadLabels)
             .flexible(false)
             .trim(true);

@@ -486,13 +486,9 @@ impl Sheet {
         }
 
         let types = match &type_strategy {
-            HeaderTypesStrategy::Provided(ct) => Sheet::balance_vector(ct.to_owned(), longest_row),
-            HeaderTypesStrategy::Infer => {
-                Sheet::balance_vector(Vec::<ColumnType>::new(), longest_row)
-            }
-            HeaderTypesStrategy::None => {
-                Sheet::balance_vector(Vec::<ColumnType>::new(), longest_row)
-            }
+            TypesStrategy::Provided(ct) => Sheet::balance_vector(ct.to_owned(), longest_row),
+            TypesStrategy::Infer => Sheet::balance_vector(Vec::<ColumnType>::new(), longest_row),
+            TypesStrategy::None => Sheet::balance_vector(Vec::<ColumnType>::new(), longest_row),
         };
 
         let labels = match &label_strategy {
@@ -524,7 +520,7 @@ impl Sheet {
             primary_key: primary,
         };
 
-        if type_strategy == HeaderTypesStrategy::Infer {
+        if type_strategy == TypesStrategy::Infer {
             Sheet::infer_col_kinds(&mut sh, longest_row);
         }
 

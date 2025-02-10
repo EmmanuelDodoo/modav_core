@@ -2,7 +2,7 @@ use std::path::Path;
 
 use super::{
     error::*,
-    utils::{HeaderLabelStrategy, HeaderTypesStrategy},
+    utils::{HeaderLabelStrategy, TypesStrategy},
     Sheet,
 };
 
@@ -13,7 +13,7 @@ pub struct SheetBuilder<P: AsRef<Path>> {
     pub(crate) trim: bool,
     pub(crate) label_strategy: HeaderLabelStrategy,
     pub(crate) flexible: bool,
-    pub(crate) type_strategy: HeaderTypesStrategy,
+    pub(crate) type_strategy: TypesStrategy,
     pub(crate) delimiter: u8,
 }
 
@@ -25,7 +25,7 @@ impl<P: AsRef<Path>> SheetBuilder<P> {
             trim: false,
             label_strategy: HeaderLabelStrategy::NoLabels,
             flexible: false,
-            type_strategy: HeaderTypesStrategy::None,
+            type_strategy: TypesStrategy::None,
             delimiter: b',',
         }
     }
@@ -42,7 +42,7 @@ impl<P: AsRef<Path>> SheetBuilder<P> {
         Self { flexible, ..self }
     }
 
-    pub fn types(self, strategy: HeaderTypesStrategy) -> Self {
+    pub fn types(self, strategy: TypesStrategy) -> Self {
         Self {
             type_strategy: strategy,
             ..self

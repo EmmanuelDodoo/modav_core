@@ -300,7 +300,7 @@ impl fmt::Display for HeaderLabelStrategy {
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
-pub enum HeaderTypesStrategy {
+pub enum TypesStrategy {
     /// The types are infered from the csv
     Infer,
     /// The types are provided as a vector
@@ -310,7 +310,7 @@ pub enum HeaderTypesStrategy {
     None,
 }
 
-impl fmt::Display for HeaderTypesStrategy {
+impl fmt::Display for TypesStrategy {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,

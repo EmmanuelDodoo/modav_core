@@ -12,8 +12,7 @@ use super::{
     error::*,
     utils::{
         BarChartAxisLabelStrategy, BarChartBarLabels, ColumnHeader, ColumnType, Data,
-        HeaderLabelStrategy, HeaderTypesStrategy, LineLabelStrategy,
-        StackedBarChartAxisLabelStrategy,
+        HeaderLabelStrategy, LineLabelStrategy, StackedBarChartAxisLabelStrategy, TypesStrategy,
     },
     Cell, Row, Sheet,
 };
@@ -36,7 +35,7 @@ fn create_air_csv() -> Result<Sheet> {
     SheetBuilder::new(path.clone())
         .trim(true)
         .primary(0)
-        .types(HeaderTypesStrategy::Provided(ct))
+        .types(TypesStrategy::Provided(ct))
         .labels(HeaderLabelStrategy::ReadLabels)
         .build()
 }
@@ -191,7 +190,7 @@ fn test_sheet_builder() {
         .trim(true)
         .primary(0)
         .labels(HeaderLabelStrategy::ReadLabels)
-        .types(HeaderTypesStrategy::Provided(ct))
+        .types(TypesStrategy::Provided(ct))
         .build();
 
     match res {
@@ -238,7 +237,7 @@ fn test_sheet_builder() {
 
     let res = SheetBuilder::new(path2)
         .trim(true)
-        .types(HeaderTypesStrategy::Infer)
+        .types(TypesStrategy::Infer)
         .labels(HeaderLabelStrategy::Provided(lbl))
         .build();
 
@@ -283,7 +282,7 @@ fn test_col_validation() {
     let res = SheetBuilder::new(path1)
         .trim(true)
         .labels(HeaderLabelStrategy::ReadLabels)
-        .types(HeaderTypesStrategy::Provided(ct))
+        .types(TypesStrategy::Provided(ct))
         .build();
 
     match res {
@@ -306,7 +305,7 @@ fn test_col_validation2() {
     if let Err(e) = SheetBuilder::new(path)
         .trim(true)
         .labels(HeaderLabelStrategy::ReadLabels)
-        .types(HeaderTypesStrategy::Provided(ct))
+        .types(TypesStrategy::Provided(ct))
         .build()
     {
         panic!("{}", e)
@@ -377,7 +376,7 @@ fn test_sort() {
     let res = SheetBuilder::new(path)
         .trim(true)
         .labels(HeaderLabelStrategy::ReadLabels)
-        .types(HeaderTypesStrategy::Provided(ct))
+        .types(TypesStrategy::Provided(ct))
         .build();
 
     match res {
@@ -425,7 +424,7 @@ fn test_sort_reversed() {
     let res = SheetBuilder::new(path)
         .trim(true)
         .labels(HeaderLabelStrategy::ReadLabels)
-        .types(HeaderTypesStrategy::Provided(ct))
+        .types(TypesStrategy::Provided(ct))
         .build();
 
     match res {
@@ -514,7 +513,7 @@ fn test_line_scales() {
         .trim(true)
         .flexible(false)
         .primary(0)
-        .types(HeaderTypesStrategy::Infer)
+        .types(TypesStrategy::Infer)
         .labels(HeaderLabelStrategy::ReadLabels)
         .build()
         .expect("Building alter csv failure");
@@ -601,7 +600,7 @@ fn test_transpose_flexible() {
     let res = SheetBuilder::new(path)
         .trim(true)
         .labels(HeaderLabelStrategy::ReadLabels)
-        .types(HeaderTypesStrategy::Provided(ct))
+        .types(TypesStrategy::Provided(ct))
         .flexible(true)
         .primary(0)
         .build();
@@ -675,7 +674,7 @@ fn test_transpose_symmetry() {
 
     match SheetBuilder::new(headless)
         .labels(HeaderLabelStrategy::Provided(labels))
-        .types(HeaderTypesStrategy::Infer)
+        .types(TypesStrategy::Infer)
         .trim(true)
         .build()
     {
@@ -697,7 +696,7 @@ fn test_transpose_symmetry() {
     match SheetBuilder::new(flexible)
         .labels(HeaderLabelStrategy::ReadLabels)
         .flexible(true)
-        .types(HeaderTypesStrategy::Provided(ct))
+        .types(TypesStrategy::Provided(ct))
         .trim(true)
         .build()
     {
@@ -730,7 +729,7 @@ fn test_infer_types() {
     let res = SheetBuilder::new(path)
         .labels(HeaderLabelStrategy::ReadLabels)
         .trim(true)
-        .types(HeaderTypesStrategy::Infer)
+        .types(TypesStrategy::Infer)
         .build();
 
     match res {
@@ -758,7 +757,7 @@ fn test_create_bar_chart() {
     let res = SheetBuilder::new(path)
         .labels(HeaderLabelStrategy::ReadLabels)
         .trim(true)
-        .types(HeaderTypesStrategy::Infer)
+        .types(TypesStrategy::Infer)
         .build()
         .unwrap();
 
@@ -906,7 +905,7 @@ fn test_stacked_bar_char() {
     let res = SheetBuilder::new(path)
         .labels(HeaderLabelStrategy::ReadLabels)
         .trim(true)
-        .types(HeaderTypesStrategy::Infer)
+        .types(TypesStrategy::Infer)
         .build()
         .unwrap();
 
@@ -1034,7 +1033,7 @@ fn test_stacked_bar_char() {
     let res = SheetBuilder::new(path)
         .labels(HeaderLabelStrategy::ReadLabels)
         .trim(true)
-        .types(HeaderTypesStrategy::Infer)
+        .types(TypesStrategy::Infer)
         .build()
         .unwrap();
 
