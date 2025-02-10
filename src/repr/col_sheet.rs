@@ -250,6 +250,13 @@ impl ColumnSheet {
         Ok(())
     }
 
+    /// Returns the index of the primary column of the [`ColumnSheet`] if any.
+    ///
+    /// An empty [`ColumnSheet`] has [`None`] as its primary column.
+    pub fn get_primary(&self) -> Option<usize> {
+        self.primary
+    }
+
     /// Returns a shared reference to the column at `idx`, if any.
     pub fn get_col(&self, idx: usize) -> Option<&dyn Column> {
         self.columns.get(idx).map(|boxed| boxed.as_ref())
