@@ -1,5 +1,6 @@
 use csv::{ReaderBuilder, Trim};
 use std::{
+    iter::Iterator,
     path::Path,
     slice::{Iter, IterMut},
 };
@@ -40,7 +41,45 @@ mod arraybool;
 pub use arraybool::*;
 
 use super::builders::SheetBuilder;
-use super::utils::{HeaderLabelStrategy, HeaderTypesStrategy};
+use super::utils::{ColumnType as CT, HeaderLabelStrategy, HeaderTypesStrategy};
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum ColumnType {
+    None,
+    Infer,
+    Type(CT),
+}
+
+struct StrategyIter {
+    strat: HeaderTypesStrategy,
+    idx: usize,
+}
+
+impl StrategyIter {
+    fn new(value: HeaderTypesStrategy) -> Self {
+        Self {
+            strat: value,
+            idx: 0,
+        }
+    }
+}
+
+impl Iterator for StrategyIter {
+    type Item = ColumnType;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let idx = self.idx;
+        self.idx += 1;
+
+        match &self.strat {
+            HeaderTypesStrategy::Provided(headers) => {
+                headers.get(idx).copied().map(|ct| ColumnType::Type(ct))
+            }
+            HeaderTypesStrategy::None => Some(ColumnType::None),
+            HeaderTypesStrategy::Infer => Some(ColumnType::Infer),
+        }
+    }
+}
 
 pub struct ColumnSheet {
     /// The Columns in the sheet. All columns are guaranteed to have the same
@@ -155,10 +194,12 @@ impl ColumnSheet {
             "Column construction assertion failed"
         );
 
+        let strategies = StrategyIter::new(type_strategy);
+
         cols.into_iter()
             .zip(headers)
-            // Full implementation should not clone strategy
-            .map(|(col, header)| parse_column(col, header, type_strategy.clone()))
+            .zip(strategies)
+            .map(|((col, header), kind)| parse_column(col, header, kind))
             .collect()
     }
 
@@ -366,21 +407,27 @@ impl ColumnSheet {
     }
 }
 
-fn parse_column(
-    col: Vec<String>,
-    header: Option<String>,
-    infer: HeaderTypesStrategy,
-) -> Box<dyn Column> {
-    match infer {
-        HeaderTypesStrategy::None => {
-            let mut array = ArrayText::parse_str(col);
-            if let Some(header) = header {
-                array.set_header(header);
-            }
-            Box::new(array)
+fn parse_column(col: Vec<String>, header: Option<String>, strategy: ColumnType) -> Box<dyn Column> {
+    let text = |col: Vec<String>, header: Option<String>| {
+        let mut array = ArrayText::parse_str(col);
+        if let Some(header) = header {
+            array.set_header(header);
         }
-        HeaderTypesStrategy::Infer => {
+        Box::new(array)
+    };
+
+    match strategy {
+        ColumnType::None => text(col, header),
+
+        ColumnType::Infer => {
             if let Some(mut array) = ArrayI32::parse_str(&col) {
+                if let Some(header) = header {
+                    array.set_header(header);
+                }
+                return Box::new(array);
+            };
+
+            if let Some(mut array) = ArrayU32::parse_str(&col) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
@@ -394,16 +441,102 @@ fn parse_column(
                 return Box::new(array);
             };
 
-            let mut array = ArrayText::parse_str(col);
-            if let Some(header) = header {
-                array.set_header(header);
-            }
+            if let Some(mut array) = ArrayUSize::parse_str(&col) {
+                if let Some(header) = header {
+                    array.set_header(header);
+                }
+                return Box::new(array);
+            };
 
-            Box::new(array)
+            if let Some(mut array) = ArrayBool::parse_str(&col) {
+                if let Some(header) = header {
+                    array.set_header(header);
+                }
+                return Box::new(array);
+            };
+
+            if let Some(mut array) = ArrayF32::parse_str(&col) {
+                if let Some(header) = header {
+                    array.set_header(header);
+                }
+                return Box::new(array);
+            };
+
+            if let Some(mut array) = ArrayF64::parse_str(&col) {
+                if let Some(header) = header {
+                    array.set_header(header);
+                }
+                return Box::new(array);
+            };
+
+            text(col, header)
         }
-        HeaderTypesStrategy::Provided(_kinds) => {
-            // Remember to set header
-            todo!("Header Type Strategy")
+
+        ColumnType::Type(CT::None) | ColumnType::Type(CT::Text) => text(col, header),
+
+        ColumnType::Type(CT::Integer) => {
+            if let Some(mut array) = ArrayI32::parse_str(&col) {
+                if let Some(header) = header {
+                    array.set_header(header);
+                }
+                return Box::new(array);
+            };
+
+            if let Some(mut array) = ArrayU32::parse_str(&col) {
+                if let Some(header) = header {
+                    array.set_header(header);
+                }
+                return Box::new(array);
+            };
+
+            text(col, header)
+        }
+
+        ColumnType::Type(CT::Number) => {
+            if let Some(mut array) = ArrayISize::parse_str(&col) {
+                if let Some(header) = header {
+                    array.set_header(header);
+                }
+                return Box::new(array);
+            };
+
+            if let Some(mut array) = ArrayUSize::parse_str(&col) {
+                if let Some(header) = header {
+                    array.set_header(header);
+                }
+                return Box::new(array);
+            };
+
+            text(col, header)
+        }
+
+        ColumnType::Type(CT::Float) => {
+            if let Some(mut array) = ArrayF32::parse_str(&col) {
+                if let Some(header) = header {
+                    array.set_header(header);
+                }
+                return Box::new(array);
+            };
+
+            if let Some(mut array) = ArrayF64::parse_str(&col) {
+                if let Some(header) = header {
+                    array.set_header(header);
+                }
+                return Box::new(array);
+            };
+
+            text(col, header)
+        }
+
+        ColumnType::Type(CT::Boolean) => {
+            if let Some(mut array) = ArrayBool::parse_str(&col) {
+                if let Some(header) = header {
+                    array.set_header(header);
+                }
+                return Box::new(array);
+            };
+
+            text(col, header)
         }
     }
 }
