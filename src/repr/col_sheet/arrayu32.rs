@@ -1,4 +1,4 @@
-use super::{parse_helper, Column, DataType, Iter, IterMut, Sealed};
+use super::{parse_helper, parse_unchecked, Column, DataType, Iter, IterMut, Sealed};
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ArrayU32 {
@@ -50,8 +50,8 @@ impl ArrayU32 {
         let mut cells = Vec::default();
 
         for value in values {
-            let value = parse_helper::<u32>(value).ok()?;
-            cells.push(value)
+            let parsed = parse_helper::<u32>(value).ok()?;
+            cells.push(parsed)
         }
 
         Some(Self {
@@ -63,11 +63,8 @@ impl ArrayU32 {
 
 impl Sealed for ArrayU32 {
     fn push(&mut self, value: &str) {
-        let value = match parse_helper::<u32>(value) {
-            Ok(val) => val,
-            Err(_) => None,
-        };
-        self.cells.push(value)
+        let parsed = parse_unchecked::<u32>(value);
+        self.cells.push(parsed)
     }
 
     fn remove(&mut self, idx: usize) {
@@ -82,9 +79,7 @@ impl Sealed for ArrayU32 {
             return;
         }
 
-        let Ok(parsed) = parse_helper::<u32>(value) else {
-            return;
-        };
+        let parsed = parse_unchecked::<u32>(value);
 
         self.cells.insert(idx, parsed);
     }
@@ -108,9 +103,7 @@ impl Column for ArrayU32 {
     }
 
     fn set_position<'a>(&mut self, value: &'a str, idx: usize) {
-        let Ok(parsed) = parse_helper::<u32>(value) else {
-            return;
-        };
+        let parsed = parse_unchecked::<u32>(value);
 
         let Some(prev) = self.cells.get_mut(idx) else {
             return;

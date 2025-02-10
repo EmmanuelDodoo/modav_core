@@ -50,16 +50,13 @@ impl ArrayText {
         self.cells.iter_mut()
     }
 
-    pub fn parse_str(values: Vec<String>) -> Self {
+    pub fn parse_str(values: &Vec<String>) -> Self {
         let mut cells = Vec::default();
 
         for value in values {
             // Always successful
-            let value = match parse_helper::<String>(&value) {
-                Ok(val) => val,
-                Err(_) => None,
-            };
-            cells.push(value);
+            let parsed = parse_helper(value).unwrap_or_default();
+            cells.push(parsed);
         }
 
         Self {
@@ -71,11 +68,8 @@ impl ArrayText {
 
 impl Sealed for ArrayText {
     fn push(&mut self, value: &str) {
-        let value = match parse_helper::<String>(value) {
-            Ok(val) => val,
-            Err(_) => None,
-        };
-        self.cells.push(value)
+        let parsed = parse_helper(value).unwrap_or_default();
+        self.cells.push(parsed)
     }
 
     fn remove(&mut self, idx: usize) {
@@ -89,9 +83,7 @@ impl Sealed for ArrayText {
         if idx >= self.len() {
             return;
         }
-        let Ok(parsed) = parse_helper::<String>(value) else {
-            return;
-        };
+        let parsed = parse_helper(value).unwrap_or_default();
 
         self.cells.insert(idx, parsed);
     }
@@ -115,9 +107,7 @@ impl Column for ArrayText {
     }
 
     fn set_position<'a>(&mut self, value: &'a str, idx: usize) {
-        let Ok(parsed) = parse_helper::<String>(value) else {
-            return;
-        };
+        let parsed = parse_helper(value).unwrap_or_default();
 
         let Some(prev) = self.cells.get_mut(idx) else {
             return;

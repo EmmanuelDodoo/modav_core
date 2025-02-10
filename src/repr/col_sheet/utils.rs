@@ -57,6 +57,13 @@ pub(super) fn parse_helper<T: FromStr>(input: &str) -> Result<Option<T>, ()> {
     input.parse::<T>().map_err(|_err| {}).map(Some)
 }
 
+/// Discards the error from `parse_helper`.
+///
+/// Logs any parsing failures
+pub(super) fn parse_unchecked<T: FromStr>(input: &str) -> Option<T> {
+    parse_helper(input).ok()?
+}
+
 mod private {
     #[allow(unused_imports)]
     use super::super::ColumnSheet;

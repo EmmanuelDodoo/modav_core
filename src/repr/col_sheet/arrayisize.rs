@@ -1,4 +1,4 @@
-use super::{parse_helper, Column, DataType, Iter, IterMut, Sealed};
+use super::{parse_helper, parse_unchecked, Column, DataType, Iter, IterMut, Sealed};
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ArrayISize {
@@ -63,11 +63,8 @@ impl ArrayISize {
 
 impl Sealed for ArrayISize {
     fn push(&mut self, value: &str) {
-        let value = match parse_helper::<isize>(value) {
-            Ok(val) => val,
-            Err(_) => None,
-        };
-        self.cells.push(value)
+        let parsed = parse_unchecked::<isize>(value);
+        self.cells.push(parsed)
     }
 
     fn remove(&mut self, idx: usize) {
@@ -82,9 +79,7 @@ impl Sealed for ArrayISize {
             return;
         }
 
-        let Ok(parsed) = parse_helper::<isize>(value) else {
-            return;
-        };
+        let parsed = parse_unchecked::<isize>(value);
 
         self.cells.insert(idx, parsed);
     }
@@ -108,9 +103,7 @@ impl Column for ArrayISize {
     }
 
     fn set_position<'a>(&mut self, value: &'a str, idx: usize) {
-        let Ok(parsed) = parse_helper::<isize>(value) else {
-            return;
-        };
+        let parsed = parse_unchecked::<isize>(value);
 
         let Some(prev) = self.cells.get_mut(idx) else {
             return;

@@ -409,7 +409,7 @@ impl ColumnSheet {
 
 fn parse_column(col: Vec<String>, header: Option<String>, strategy: ColumnType) -> Box<dyn Column> {
     let text = |col: Vec<String>, header: Option<String>| {
-        let mut array = ArrayText::parse_str(col);
+        let mut array = ArrayText::parse_str(&col);
         if let Some(header) = header {
             array.set_header(header);
         }
