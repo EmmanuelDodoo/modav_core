@@ -75,7 +75,7 @@ impl Sealed for ArrayISize {
     }
 
     fn insert(&mut self, value: &str, idx: usize) {
-        if idx >= self.len() {
+        if idx > self.len() {
             return;
         }
 

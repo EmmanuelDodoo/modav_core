@@ -81,7 +81,7 @@ mod private {
         /// Inserts successfully parsed `value` at `idx` shifting all elements after
         /// to the right.
         ///
-        /// Should parsing fail, no insertion is made.
+        /// Should parsing fail, a [`None`] is inserted.
         fn insert(&mut self, value: &str, idx: usize);
     }
 }

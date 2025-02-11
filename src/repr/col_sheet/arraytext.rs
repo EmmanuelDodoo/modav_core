@@ -80,7 +80,7 @@ impl Sealed for ArrayText {
     }
 
     fn insert(&mut self, value: &str, idx: usize) {
-        if idx >= self.len() {
+        if idx > self.len() {
             return;
         }
         let parsed = parse_helper(value).unwrap_or_default();
