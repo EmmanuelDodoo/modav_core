@@ -45,6 +45,7 @@ pub use arraybool::*;
 use super::builders::SheetBuilder;
 use super::utils::{ColumnType as CT, HeaderLabelStrategy, TypesStrategy};
 
+/// Wrapper type for [`ColumnType`] and [`TypesStrategy`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum ColumnType {
     None,

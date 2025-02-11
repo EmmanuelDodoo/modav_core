@@ -86,8 +86,8 @@ impl Sealed for ArrayBool {
 }
 
 impl Column for ArrayBool {
-    fn label(&self) -> Option<&String> {
-        self.header.as_ref()
+    fn label(&self) -> Option<&str> {
+        self.header.as_deref()
     }
 
     fn kind(&self) -> DataType {

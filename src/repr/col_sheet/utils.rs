@@ -18,7 +18,7 @@ pub enum DataType {
 }
 
 pub trait Column: Sealed + Debug {
-    fn label(&self) -> Option<&String>;
+    fn label(&self) -> Option<&str>;
 
     fn kind(&self) -> DataType;
 
@@ -42,7 +42,7 @@ pub trait Column: Sealed + Debug {
 
 #[derive(Debug)]
 pub struct ColumnHeader<'a> {
-    pub header: Option<&'a String>,
+    pub header: Option<&'a str>,
     pub kind: DataType,
 }
 

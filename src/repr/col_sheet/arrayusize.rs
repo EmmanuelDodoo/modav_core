@@ -94,8 +94,8 @@ impl Column for ArrayUSize {
         DataType::USize
     }
 
-    fn label(&self) -> Option<&String> {
-        self.header.as_ref()
+    fn label(&self) -> Option<&str> {
+        self.header.as_deref()
     }
 
     fn set_header(&mut self, header: String) {
