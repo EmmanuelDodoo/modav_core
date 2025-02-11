@@ -18,16 +18,26 @@ pub enum DataType {
 }
 
 pub trait Column: Sealed + Debug {
+    /// Returns the a reference to the header label of the [`Column`].
     fn label(&self) -> Option<&str>;
 
+    /// Returns the type of data within the [`Column`].
     fn kind(&self) -> DataType;
 
+    /// Returns a reference to the data at index `idx` within the [`Column`].
+    fn data_ref(&self, idx: usize) -> DataRef<'_>;
+
+    /// Returns the length of the [`Column`].
     fn len(&self) -> usize;
 
+    /// Returns true if the [`Column`] has no element.
+    ///
+    /// Null values are considered to be elements.
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
+    /// Sets the header label for the [`Column`].
     fn set_header(&mut self, header: String);
 
     /// Overwrites the value at `idx` with successfully parsed `value`. If
@@ -44,6 +54,20 @@ pub trait Column: Sealed + Debug {
 pub struct ColumnHeader<'a> {
     pub header: Option<&'a str>,
     pub kind: DataType,
+}
+
+/// Reference to the data within a [`Column`]'s cell.
+#[derive(Debug)]
+pub enum DataRef<'a> {
+    I32(i32),
+    U32(u32),
+    ISize(isize),
+    USize(usize),
+    Bool(bool),
+    F32(f32),
+    F64(f64),
+    Text(&'a str),
+    None,
 }
 
 /// Parses `input` into given type, taking note of both empty and null strings.

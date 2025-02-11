@@ -1,4 +1,4 @@
-use super::{parse_helper, Column, DataType, Iter, IterMut, Sealed};
+use super::{parse_helper, utils::*, Iter, IterMut};
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ArrayText {
@@ -122,5 +122,12 @@ impl Column for ArrayText {
         }
 
         self.cells.swap(x, y)
+    }
+
+    fn data_ref(&self, idx: usize) -> DataRef<'_> {
+        match self.cells.get(idx).as_ref() {
+            Some(Some(value)) => DataRef::Text(value),
+            _ => DataRef::None,
+        }
     }
 }

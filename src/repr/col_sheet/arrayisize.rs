@@ -1,4 +1,4 @@
-use super::{parse_helper, parse_unchecked, Column, DataType, Iter, IterMut, Sealed};
+use super::{parse_helper, parse_unchecked, utils::*, Iter, IterMut};
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ArrayISize {
@@ -118,5 +118,12 @@ impl Column for ArrayISize {
         }
 
         self.cells.swap(x, y)
+    }
+
+    fn data_ref(&self, idx: usize) -> DataRef<'_> {
+        match self.cells.get(idx).copied() {
+            Some(Some(value)) => DataRef::ISize(value),
+            _ => DataRef::None,
+        }
     }
 }
