@@ -88,6 +88,8 @@ pub struct ColumnSheet {
     columns: Vec<Box<dyn Column>>,
     /// The primary column of the sheet. Is None if the sheet is empty.
     primary: Option<usize>,
+    /// The height of each column in the sheet
+    height: usize,
 }
 
 impl ColumnSheet {
@@ -116,7 +118,7 @@ impl ColumnSheet {
             .flexible(flexible)
             .from_path(path)?;
 
-        let (mut cols, max_rows) = {
+        let (mut cols, height) = {
             let mut cols: Vec<Vec<String>> = Vec::default();
             let mut row_len = 0;
 
@@ -145,7 +147,7 @@ impl ColumnSheet {
         };
 
         cols.iter_mut()
-            .for_each(|col| col.resize_with(max_rows, Default::default));
+            .for_each(|col| col.resize_with(height, Default::default));
 
         let mut headers = match label_strategy {
             HeaderLabelStrategy::NoLabels => vec![None; cols.len()],
@@ -174,7 +176,11 @@ impl ColumnSheet {
             Some(primary)
         };
 
-        Ok(Self { columns, primary })
+        Ok(Self {
+            columns,
+            primary,
+            height,
+        })
     }
 
     /// Constructs columns from inputs. Expects the length of `cols` and
@@ -235,7 +241,7 @@ impl ColumnSheet {
     /// All [`Column`]s within a [`ColumnSheet`] are guaranteed to have the same
     /// height. Shorter columns are padded with null to achieve this.
     pub fn height(&self) -> usize {
-        self.columns.first().map_or(0, |col| col.len())
+        self.height
     }
 
     /// Sets the primary column of the [`ColumnSheet`].
@@ -320,6 +326,8 @@ impl ColumnSheet {
             .iter_mut()
             .for_each(|column| column.remove(idx));
 
+        self.height -= 1;
+
         Ok(())
     }
 
@@ -385,6 +393,8 @@ impl ColumnSheet {
                 .zip(row)
                 .for_each(|(column, value)| column.insert(value.as_ref(), idx));
         }
+
+        self.height += 1;
 
         Ok(())
     }
