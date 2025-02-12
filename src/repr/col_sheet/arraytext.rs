@@ -87,6 +87,16 @@ impl Sealed for ArrayText {
 
         self.cells.insert(idx, parsed);
     }
+
+    fn apply_index_swap(&mut self, indices: &[usize]) {
+        for (pos, elem) in indices.iter().enumerate() {
+            self.cells.swap(pos, *elem);
+        }
+    }
+
+    fn remove_all(&mut self) {
+        self.cells.clear()
+    }
 }
 
 impl Column for ArrayText {
@@ -106,14 +116,20 @@ impl Column for ArrayText {
         self.set_header(header);
     }
 
-    fn set_position(&mut self, value: &str, idx: usize) {
-        let parsed = parse_helper(value).unwrap_or_default();
+    fn set_position(&mut self, value: &str, idx: usize) -> bool {
+        let Ok(parsed) = parse_helper::<String>(value) else {
+            return false;
+        };
 
         let Some(prev) = self.cells.get_mut(idx) else {
-            return;
+            // This is ok because the Column sheet would have caught the out-of-bounds
+            // earlier
+            return true;
         };
 
         *prev = parsed;
+
+        true
     }
 
     fn swap(&mut self, x: usize, y: usize) {
@@ -124,10 +140,26 @@ impl Column for ArrayText {
         self.cells.swap(x, y)
     }
 
-    fn data_ref(&self, idx: usize) -> DataRef<'_> {
-        match self.cells.get(idx).as_ref() {
-            Some(Some(value)) => DataRef::Text(value),
-            _ => DataRef::None,
+    fn data_ref(&self, idx: usize) -> Option<DataRef<'_>> {
+        match self.cells.get(idx)? {
+            Some(value) => Some(DataRef::Text(value)),
+            None => Some(DataRef::None),
         }
+    }
+
+    fn clear(&mut self, idx: usize) {
+        if let Some(cell) = self.cells.get_mut(idx) {
+            cell.take();
+        }
+    }
+
+    fn clear_all(&mut self) {
+        let len = self.cells.len();
+
+        self.cells = vec![None; len];
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }

@@ -83,6 +83,16 @@ impl Sealed for ArrayBool {
 
         self.cells.insert(idx, parsed);
     }
+
+    fn apply_index_swap(&mut self, indices: &[usize]) {
+        for (pos, elem) in indices.iter().enumerate() {
+            self.cells.swap(pos, *elem);
+        }
+    }
+
+    fn remove_all(&mut self) {
+        self.cells.clear()
+    }
 }
 
 impl Column for ArrayBool {
@@ -102,14 +112,20 @@ impl Column for ArrayBool {
         self.header = Some(header);
     }
 
-    fn set_position(&mut self, value: &str, idx: usize) {
-        let parsed = parse_unchecked::<bool>(value);
+    fn set_position(&mut self, value: &str, idx: usize) -> bool {
+        let Ok(parsed) = parse_helper::<bool>(value) else {
+            return false;
+        };
 
         let Some(prev) = self.cells.get_mut(idx) else {
-            return;
+            // This is ok because the Column sheet would have caught the out-of-bounds
+            // earlier
+            return true;
         };
 
         *prev = parsed;
+
+        true
     }
 
     fn swap(&mut self, x: usize, y: usize) {
@@ -120,10 +136,26 @@ impl Column for ArrayBool {
         self.cells.swap(x, y);
     }
 
-    fn data_ref(&self, idx: usize) -> DataRef<'_> {
-        match self.cells.get(idx).copied() {
-            Some(Some(value)) => DataRef::Bool(value),
-            _ => DataRef::None,
+    fn data_ref(&self, idx: usize) -> Option<DataRef<'_>> {
+        match self.cells.get(idx)? {
+            Some(value) => Some(DataRef::Bool(*value)),
+            None => Some(DataRef::None),
         }
+    }
+
+    fn clear(&mut self, idx: usize) {
+        if let Some(cell) = self.cells.get_mut(idx) {
+            cell.take();
+        }
+    }
+
+    fn clear_all(&mut self) {
+        let len = self.cells.len();
+
+        self.cells = vec![None; len];
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
     }
 }

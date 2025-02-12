@@ -1,6 +1,6 @@
 use csv::{ReaderBuilder, Trim};
 use std::{
-    iter::Iterator,
+    iter::{ExactSizeIterator, Iterator},
     path::Path,
     slice::{Iter, IterMut},
 };
@@ -41,6 +41,8 @@ pub use arrayf64::*;
 
 mod arraybool;
 pub use arraybool::*;
+
+mod col_tests;
 
 use super::builders::SheetBuilder;
 use super::utils::{ColumnType as CT, HeaderLabelStrategy, TypesStrategy};
@@ -83,20 +85,23 @@ impl Iterator for StrategyIter {
 }
 
 pub struct ColumnSheet {
-    /// The Columns in the sheet. All columns are guaranteed to have the same
+    /// The Columns in the [`ColumnSheet`]. All columns are guaranteed to have the same
     /// height
     columns: Vec<Box<dyn Column>>,
-    /// The primary column of the sheet. Is None if the sheet is empty.
+    /// The primary column of the [`ColumnSheet`]. Is None if the [`ColumnSheet`] is empty.
     primary: Option<usize>,
-    /// The height of each column in the sheet
+    /// The number of cells in a column
     height: usize,
 }
 
 impl ColumnSheet {
+    /// Constructs a [`ColumnSheet`] from the provided path using the default
+    /// [`SheetBuilder`].
     pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self> {
         Self::from_builder(SheetBuilder::new(path))
     }
 
+    /// Constructs a [`ColumnSheet`] using a configured [`SheetBuilder`].
     pub fn from_builder<P: AsRef<Path>>(builder: SheetBuilder<P>) -> Result<Self> {
         let SheetBuilder {
             path,
@@ -120,34 +125,47 @@ impl ColumnSheet {
 
         let (mut cols, height) = {
             let mut cols: Vec<Vec<String>> = Vec::default();
-            let mut row_len = 0;
+            let mut rows = 0;
+            let mut columns = 0;
 
-            for (rows, record) in rdr.records().enumerate() {
+            for (row, record) in rdr.records().enumerate() {
                 let record = record?;
-                let len = record.len();
+                rows += 1;
+                let curr_cols = record.len();
 
-                for (idx, record) in record.into_iter().enumerate() {
+                for (col, record) in record.into_iter().enumerate() {
                     let record = record.to_owned();
 
-                    match cols.get_mut(idx) {
+                    match cols.get_mut(col) {
                         Some(col) => col.push(record),
+                        // If this record(row) is longer than previous, construct
+                        // the a new column, fill it with the default value and
+                        // then also push this row's value for the column.
                         None => {
-                            let mut col = vec![String::default(); rows];
+                            let mut col = vec![String::default(); row];
                             col.push(record);
                             cols.push(col);
                         }
                     };
                 }
 
-                if len > row_len {
-                    row_len = len
+                if curr_cols > columns {
+                    columns = curr_cols
+                } else {
+                    // If a previous record(row) was longer than this one, fill
+                    // it with the default value
+                    for missing in curr_cols..columns {
+                        if let Some(missing) = cols.get_mut(missing) {
+                            missing.push(String::default())
+                        }
+                    }
                 }
             }
-            (cols, row_len)
+            (cols, rows)
         };
 
-        cols.iter_mut()
-            .for_each(|col| col.resize_with(height, Default::default));
+        //cols.iter_mut()
+        //    .for_each(|col| col.resize_with(height, Default::default));
 
         let mut headers = match label_strategy {
             HeaderLabelStrategy::NoLabels => vec![None; cols.len()],
@@ -206,13 +224,188 @@ impl ColumnSheet {
             .collect()
     }
 
-    /// Returns an iterator over the columns of the sheet.
+    /// Returns an iterator over the columns of the [`ColumnSheet`].
     pub fn iter(&self) -> Iter<'_, Box<dyn Column>> {
         self.columns.iter()
     }
 
+    /// Returns an iterator that allows modifying each column
+    pub fn iter_mut(&mut self) -> IterMut<'_, Box<dyn Column>> {
+        self.columns.iter_mut()
+    }
+
+    /// Returns a reference to the value within the cell at column `col`, row `row`
+    pub fn get_cell(&self, col: usize, row: usize) -> Option<DataRef> {
+        self.columns.get(col).and_then(|col| col.data_ref(row))
+    }
+
+    /// Overwrites the cell at `col`, `row` with `value` if parsing to the
+    /// valid column type succeeds.
+    pub fn set_cell(&mut self, value: impl AsRef<str>, col: usize, row: usize) -> Result<()> {
+        if col >= self.width() {
+            return Err(Error::InvalidColumn(col));
+        }
+
+        if row >= self.height() {
+            return Err(Error::InvalidRow(row));
+        }
+
+        let success = self
+            .columns
+            .get_mut(col)
+            .unwrap()
+            .set_position(value.as_ref(), row);
+
+        if !success {
+            return Err(Error::InvalidCellInput { col, row });
+        }
+
+        Ok(())
+    }
+
+    /// Returns the row at index `row` within the [`ColumnSheet`] if any.
+    pub fn get_row(&self, row: usize) -> Option<Vec<DataRef<'_>>> {
+        if row >= self.height {
+            return None;
+        }
+
+        let mut output = Vec::with_capacity(self.width());
+
+        for column in &self.columns {
+            let data = column.data_ref(row)?;
+            output.push(data);
+        }
+
+        Some(output)
+    }
+
+    /// Time Complexity: `O(width * log(k) + width)`
+    fn sort_col_helper(&mut self, cell: usize, rev: bool) {
+        if cell >= self.height {
+            return;
+        }
+
+        let columns = &self.columns;
+        let mut indices = (0..self.width()).collect::<Vec<usize>>();
+
+        // O(width * log(k))
+        indices.sort_by(|x, y| {
+            if rev {
+                columns[*y].data_ref(cell).cmp(&columns[*x].data_ref(cell))
+            } else {
+                columns[*x].data_ref(cell).cmp(&columns[*y].data_ref(cell))
+            }
+        });
+
+        // O(width)
+        index_sort_swap(&mut indices);
+
+        let primary = self.primary;
+
+        // 0(width)
+        for (pos, elem) in indices.iter().enumerate() {
+            if Some(elem) == primary.as_ref() {
+                self.primary = Some(pos)
+            }
+            self.columns.swap(pos, *elem);
+        }
+
+        //self.columns.sort_by(|a, b| {
+        //    if rev {
+        //        b.data_ref(cell).cmp(&a.data_ref(cell))
+        //    } else {
+        //        a.data_ref(cell).cmp(&b.data_ref(cell))
+        //    }
+        //})
+    }
+
+    /// Sorts the columns of the [`ColumnSheet`] using `sort_col_by` with `cell` as 0.
+    pub fn sort_col(&mut self) {
+        if !self.true_is_empty() {
+            self.sort_col_by(0)
+        }
+    }
+
+    /// Sorts the columns of the [`ColumnSheet`] by comparing the values at `cell` for each
+    /// column.
+    ///
+    /// This sort has a time complexity of `O(width * log(k) + width)`
+    /// where `k` is the number of unique elements in the sorting column
+    pub fn sort_col_by(&mut self, cell: usize) {
+        self.sort_col_helper(cell, false)
+    }
+
+    /// Sorts the columns of the [`ColumnSheet`] like `sort_col_by` but in reverse order.
+    pub fn sort_col_by_rev(&mut self, cell: usize) {
+        self.sort_col_helper(cell, true)
+    }
+
+    /// Sorts the columns of the [`ColumnSheet`] like `sort_col` but in reverse order.
+    pub fn sort_col_rev(&mut self) {
+        if !self.true_is_empty() {
+            self.sort_col_by_rev(0)
+        }
+    }
+
+    /// Time Complexity: `O(height * (1 + log(k) +  width)`
+    fn sort_row_helper(&mut self, cell: usize, rev: bool) {
+        if cell >= self.width() {
+            return;
+        }
+
+        let column = &self.columns[cell];
+        let mut indices = (0..self.height).collect::<Vec<usize>>();
+
+        // O(height * log(k))
+        indices.sort_by(|x, y| {
+            if rev {
+                column.data_ref(*y).cmp(&column.data_ref(*x))
+            } else {
+                column.data_ref(*x).cmp(&column.data_ref(*y))
+            }
+        });
+
+        // O(height)
+        index_sort_swap(&mut indices);
+
+        // O(height * width)
+        self.columns
+            .iter_mut()
+            .for_each(|column| column.apply_index_swap(&indices));
+    }
+
+    /// Sorts the rows of the [`ColumnSheet`] using the primary column. If no
+    /// primary column is selected, the 0th column is used instead.
+    pub fn sort_row(&mut self) {
+        if !self.is_empty() {
+            let cell = self.primary.unwrap_or(0);
+            self.sort_row_by(cell)
+        }
+    }
+
+    /// Sorts the rows of the [`ColumnSheet`] like `sort_row` but in reverse order.
+    pub fn sort_row_rev(&mut self) {
+        if !self.is_empty() {
+            self.sort_row_by_rev(0)
+        }
+    }
+
+    /// Sorts the rows of the [`ColumnSheet`] by comparing the values at `cell` for
+    /// each row.
+    ///
+    /// This sort has a time complexity of `O(height * log(k) + height + height * width)`
+    /// where `k` is the number of unique elements in the sorting column
+    pub fn sort_row_by(&mut self, cell: usize) {
+        self.sort_row_helper(cell, false)
+    }
+
+    /// Sorts the rows of the [`ColumnSheet`] like `sort_row_by` but in reverse order.
+    pub fn sort_row_by_rev(&mut self, cell: usize) {
+        self.sort_row_helper(cell, true)
+    }
+
     /// Returns an iterator over the headers of the [`ColumnSheet`].
-    pub fn headers(&self) -> impl Iterator<Item = ColumnHeader<'_>> {
+    pub fn headers(&self) -> impl ExactSizeIterator<Item = ColumnHeader<'_>> {
         self.columns.iter().map(|col| {
             let header = ColumnHeader {
                 header: col.label(),
@@ -223,20 +416,29 @@ impl ColumnSheet {
     }
 
     /// Sets the header of the column at `col` to `header`.
-    pub fn set_col_header(&mut self, col: usize, header: impl Into<String>) {
+    pub fn set_col_header(&mut self, col: usize, header: impl Into<String>) -> Result<()> {
+        if col >= self.width() {
+            return Err(Error::InvalidColumn(col));
+        }
+
         if let Some(column) = self.columns.get_mut(col) {
             column.set_header(header.into())
         }
+
+        Ok(())
     }
 
     /// Returns the width of the [`ColumnSheet`].
     ///
-    /// This is essentially the same as the number of [`Column`]s in the sheet.
+    /// This is essentially the same as the number of [`Column`]s in the [`ColumnSheet`].
     pub fn width(&self) -> usize {
         self.columns.len()
     }
 
     /// Returns the height of the [`ColumnSheet`].
+    ///
+    /// The height is defined as the number of cells within a [`Column`]. As such,
+    /// a 0 height [`ColumnSheet`] may still contain [`Column`]s.
     ///
     /// All [`Column`]s within a [`ColumnSheet`] are guaranteed to have the same
     /// height. Shorter columns are padded with null to achieve this.
@@ -264,6 +466,11 @@ impl ColumnSheet {
         self.primary
     }
 
+    /// Sets the primary column of the [`ColumnSheet`] to [`None`].
+    pub fn clear_primary(&mut self) {
+        self.primary = None;
+    }
+
     /// Returns a shared reference to the column at `idx`, if any.
     pub fn get_col(&self, idx: usize) -> Option<&dyn Column> {
         self.columns.get(idx).map(|boxed| boxed.as_ref())
@@ -274,51 +481,89 @@ impl ColumnSheet {
         self.columns.get_mut(idx)
     }
 
-    /// Returns true if the [`ColumnSheet`] is empty.
+    /// Returns true if the [`ColumnSheet`] has no occupyied cells.
+    ///
+    /// The [`ColumnSheet`] may still contain [`Column`]s, but they will be empty.
     pub fn is_empty(&self) -> bool {
-        self.columns.is_empty()
+        self.height == 0
+    }
+
+    /// Returns true if the [`ColumnSheet`] contains no [`Column`]s.
+    pub fn true_is_empty(&self) -> bool {
+        self.width() == 0
     }
 
     /// Appends a column to the back of the [`ColumnSheet`]
     ///
-    /// No append occurs if `column` is not of the same height as `Self`.
+    /// Returns `Err` if `column` has a different width than `Self`.
     pub fn push_col(&mut self, column: Box<dyn Column>) -> Result<()> {
         self.insert_col(column, self.width())
     }
 
     /// Appends a row to the back of the [`ColumnSheet`]
     ///
-    /// No append occurs if `row` is not of the same width as `Self`.
+    /// Returns `Err` if `row` has a different width than `Self`.
     pub fn push_row<I, R>(&mut self, row: R) -> Result<()>
     where
         I: AsRef<str>,
         R: ExactSizeIterator<Item = I>,
     {
-        self.insert_row(row, self.height())
+        self.insert_row(row, self.height)
+    }
+
+    /// Removes the last [`Column`] from the [`ColumnSheet`].
+    pub fn pop_col(&mut self) -> Result<()> {
+        if self.width() == 0 {
+            return Err(Error::InvalidColumn(0));
+        }
+
+        self.remove_col(self.width() - 1)
+    }
+
+    /// Removes the last row from the [`ColumnSheet`].
+    pub fn pop_row(&mut self) -> Result<()> {
+        if self.is_empty() {
+            return Err(Error::InvalidRow(0));
+        }
+
+        self.remove_row(self.height - 1)
     }
 
     /// Removes the column at `idx` shifting all values to the left
     ///
-    /// No remove occurs if `idx` is invalid
+    /// Returns `Err` if `idx` >= `self.width`  
     pub fn remove_col(&mut self, idx: usize) -> Result<()> {
-        let primary = self.primary.ok_or(Error::InvalidColumn(idx))?;
+        if idx >= self.width() {
+            return Err(Error::InvalidColumn(idx));
+        }
 
         self.columns.remove(idx);
 
-        if self.is_empty() {
+        let Some(primary) = self.primary else {
+            return Ok(());
+        };
+
+        if self.true_is_empty() {
             self.primary = None;
-        } else if idx == primary && primary != 0 {
+        } else if idx <= primary && primary != 0 {
             self.primary = Some(primary - 1);
         }
 
         Ok(())
     }
 
+    /// Removes all [`Column`]s within the [`ColumnSheet`].
+    pub fn remove_all_cols(&mut self) {
+        self.columns.clear();
+        self.height = 0;
+        self.primary = None;
+    }
+
     /// Removes the row at `idx` shifting all values to the up
     ///
-    /// No remove occurs if `idx` is invalid
+    /// Returns `Err` if `idx` >= `self.height`  
     pub fn remove_row(&mut self, idx: usize) -> Result<()> {
-        if idx >= self.height() {
+        if idx >= self.height {
             return Err(Error::InvalidRow(idx));
         }
 
@@ -331,15 +576,28 @@ impl ColumnSheet {
         Ok(())
     }
 
+    /// Removes all cells in all the [`ColumnSheet`].
+    ///
+    /// All [`Column`]s in are left empty.
+    pub fn remove_all_rows(&mut self) {
+        self.columns.iter_mut().for_each(|col| col.remove_all());
+        self.height = 0;
+    }
+
     /// Inserts a column at `idx` shifting all values after right
     ///
-    /// No insertion occurs if `column` has a different height than `Self`.
+    /// Returns `Err` if `idx` > `self.width`  
+    /// Returns `Err` if `column` has a different width than `Self`.
     pub fn insert_col(&mut self, column: Box<dyn Column>, idx: usize) -> Result<()> {
         let other = column.len();
-        let own = self.height();
+        let own = self.height;
 
-        if other != own && !self.is_empty() {
+        if other != own && !self.true_is_empty() {
             return Err(Error::InvalidColumnHeight { own, other });
+        }
+
+        if idx > self.width() {
+            return Err(Error::InvalidInsertion(idx));
         }
 
         self.columns.insert(idx, column);
@@ -362,7 +620,8 @@ impl ColumnSheet {
 
     /// Inserts a row at `idx` shifting all values after down
     ///
-    /// No insertion occurs if `row` has a different width than `Self`.
+    /// Returns `Err` if `idx` > `self.height()`  
+    /// Returns `Err` if `row` has a different width than `Self`.
     pub fn insert_row<I, R>(&mut self, row: R, idx: usize) -> Result<()>
     where
         I: AsRef<str>,
@@ -371,8 +630,12 @@ impl ColumnSheet {
         let own = self.width();
         let other = row.len();
 
-        if other != own && !self.is_empty() {
+        if other != own && !self.true_is_empty() {
             return Err(Error::InvalidRowWidth { own, other });
+        }
+
+        if idx > self.height() {
+            return Err(Error::InvalidInsertion(idx));
         }
 
         if self.is_empty() {
@@ -428,7 +691,7 @@ impl ColumnSheet {
     ///
     /// Values are left unchanged if any one of the indices are invalid
     pub fn swap_rows(&mut self, x: usize, y: usize) -> Result<()> {
-        let height = self.height();
+        let height = self.height;
 
         if x >= height {
             return Err(Error::InvalidRow(x));
@@ -439,6 +702,47 @@ impl ColumnSheet {
         }
 
         self.columns.iter_mut().for_each(|col| col.swap(x, y));
+
+        Ok(())
+    }
+
+    /// Replaces all values within the [`Column`] at `idx` with [`None`].
+    pub fn clear_col(&mut self, idx: usize) -> Result<()> {
+        if idx >= self.width() {
+            return Err(Error::InvalidColumn(idx));
+        }
+
+        if let Some(col) = self.columns.get_mut(idx) {
+            col.clear_all();
+        }
+
+        Ok(())
+    }
+
+    /// Replaces all values within the row at `idx` with [`None`].
+    pub fn clear_row(&mut self, idx: usize) -> Result<()> {
+        if idx >= self.height() {
+            return Err(Error::InvalidRow(idx));
+        }
+
+        self.columns.iter_mut().for_each(|column| column.clear(idx));
+
+        Ok(())
+    }
+
+    /// Replaces the value of the cell in `col` column at `row` row with [`None`].
+    pub fn clear_cell(&mut self, col: usize, row: usize) -> Result<()> {
+        if col >= self.width() {
+            return Err(Error::InvalidColumn(col));
+        }
+
+        if row >= self.height() {
+            return Err(Error::InvalidRow(row));
+        }
+
+        if let Some(col) = self.columns.get_mut(col) {
+            col.clear(row);
+        }
 
         Ok(())
     }
@@ -579,6 +883,8 @@ fn parse_column(col: Vec<String>, header: Option<String>, strategy: ColumnType) 
 }
 
 mod error {
+    #[allow(unused_imports)]
+    use super::*;
     use csv::Error as CSVError;
     use std::{error, fmt};
 
@@ -590,6 +896,8 @@ mod error {
         InvalidPrimary(usize),
         InvalidColumnHeight { own: usize, other: usize },
         InvalidRowWidth { own: usize, other: usize },
+        InvalidInsertion(usize),
+        InvalidCellInput { col: usize, row: usize },
     }
 
     impl From<CSVError> for Error {
@@ -611,6 +919,12 @@ mod error {
                 Self::InvalidRowWidth { own, other } => {
                     write!(f, "Invalid Row width of {other} instead of {own}")
                 }
+                Self::InvalidInsertion(idx) => {
+                    write!(f, "Invalid insertion at index {idx}")
+                }
+                Self::InvalidCellInput { col, row } => {
+                    write!(f, "Invalid input for cell at column: {col}, row: {row}")
+                }
             }
         }
     }
@@ -625,29 +939,21 @@ mod error {
         }
     }
 
-    /// A short hand alias for `Sheet` error results
+    /// A short hand alias for [`ColumnSheet`] error results
     pub type Result<T> = core::result::Result<T, Error>;
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+fn index_sort_swap(indices: &mut [usize]) {
+    let mut pos = 0;
+    let end = indices.len();
 
-    #[test]
-    fn temp() {
-        //let path = "./dummies/csv/flexible.csv";
-        let path = "./dummies/csv/empty.csv";
+    while pos < end {
+        let elem = indices[pos];
 
-        let builder = SheetBuilder::new(path)
-            .types(TypesStrategy::Infer)
-            .labels(HeaderLabelStrategy::ReadLabels)
-            .flexible(false)
-            .trim(true);
-
-        let sht = ColumnSheet::from_builder(builder).unwrap();
-
-        for column in sht.iter() {
-            dbg!(column);
+        if pos > elem {
+            indices[pos] = indices[elem]
+        } else {
+            pos += 1
         }
     }
 }

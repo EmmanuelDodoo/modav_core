@@ -83,9 +83,22 @@ impl Sealed for ArrayI32 {
 
         self.cells.insert(idx, parsed);
     }
+
+    fn apply_index_swap(&mut self, indices: &[usize]) {
+        for (pos, elem) in indices.iter().enumerate() {
+            self.cells.swap(pos, *elem);
+        }
+    }
+
+    fn remove_all(&mut self) {
+        self.cells.clear()
+    }
 }
 
 impl Column for ArrayI32 {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
     fn label(&self) -> Option<&str> {
         self.header.as_deref()
     }
@@ -102,14 +115,20 @@ impl Column for ArrayI32 {
         self.header = Some(header);
     }
 
-    fn set_position(&mut self, value: &str, idx: usize) {
-        let parsed = parse_unchecked::<i32>(value);
+    fn set_position(&mut self, value: &str, idx: usize) -> bool {
+        let Ok(parsed) = parse_helper::<i32>(value) else {
+            return false;
+        };
 
         let Some(prev) = self.cells.get_mut(idx) else {
-            return;
+            // This is ok because the Column sheet would have caught the out-of-bounds
+            // earlier
+            return true;
         };
 
         *prev = parsed;
+
+        return true;
     }
 
     fn swap(&mut self, x: usize, y: usize) {
@@ -120,10 +139,22 @@ impl Column for ArrayI32 {
         self.cells.swap(x, y);
     }
 
-    fn data_ref(&self, idx: usize) -> DataRef<'_> {
-        match self.cells.get(idx).copied() {
-            Some(Some(value)) => DataRef::I32(value),
-            _ => DataRef::None,
+    fn data_ref(&self, idx: usize) -> Option<DataRef<'_>> {
+        match self.cells.get(idx)? {
+            Some(value) => Some(DataRef::I32(*value)),
+            None => Some(DataRef::None),
         }
+    }
+
+    fn clear(&mut self, idx: usize) {
+        if let Some(cell) = self.cells.get_mut(idx) {
+            cell.take();
+        }
+    }
+
+    fn clear_all(&mut self) {
+        let len = self.cells.len();
+
+        self.cells = vec![None; len];
     }
 }
