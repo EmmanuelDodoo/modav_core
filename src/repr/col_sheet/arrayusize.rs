@@ -1,4 +1,4 @@
-use super::{parse_helper, parse_unchecked, utils::*, Iter, IterMut};
+use super::{arrays::*, parse_helper, parse_unchecked, utils::*, Iter, IterMut};
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ArrayUSize {
@@ -46,11 +46,11 @@ impl ArrayUSize {
         self.cells.iter_mut()
     }
 
-    pub fn parse_str(values: &Vec<String>) -> Option<Self> {
+    pub fn parse_str(values: &Vec<String>, null: &str) -> Option<Self> {
         let mut cells = Vec::default();
 
         for value in values {
-            let parsed = parse_helper::<usize>(value).ok()?;
+            let parsed = parse_helper::<usize>(value, null).ok()?;
             cells.push(parsed)
         }
 
@@ -62,8 +62,8 @@ impl ArrayUSize {
 }
 
 impl Sealed for ArrayUSize {
-    fn push(&mut self, value: &str) {
-        let value = parse_unchecked::<usize>(value);
+    fn push(&mut self, value: &str, null: &str) {
+        let value = parse_unchecked::<usize>(value, null);
         self.cells.push(value)
     }
 
@@ -74,12 +74,12 @@ impl Sealed for ArrayUSize {
         self.cells.remove(idx);
     }
 
-    fn insert(&mut self, value: &str, idx: usize) {
+    fn insert(&mut self, value: &str, idx: usize, null: &str) {
         if idx > self.len() {
             return;
         }
 
-        let parsed = parse_unchecked::<usize>(value);
+        let parsed = parse_unchecked::<usize>(value, null);
 
         self.cells.insert(idx, parsed);
     }
@@ -112,8 +112,8 @@ impl Column for ArrayUSize {
         self.header = Some(header)
     }
 
-    fn set_position(&mut self, value: &str, idx: usize) -> bool {
-        let Ok(parsed) = parse_helper::<usize>(value) else {
+    fn set_position(&mut self, value: &str, idx: usize, null: &str) -> bool {
+        let Ok(parsed) = parse_helper::<usize>(value, null) else {
             return false;
         };
 
@@ -136,10 +136,10 @@ impl Column for ArrayUSize {
         self.cells.swap(x, y)
     }
 
-    fn data_ref(&self, idx: usize) -> Option<DataRef<'_>> {
+    fn data_ref(&self, idx: usize) -> Option<CellRef<'_>> {
         match self.cells.get(idx)? {
-            Some(value) => Some(DataRef::USize(*value)),
-            None => Some(DataRef::None),
+            Some(value) => Some(CellRef::USize(*value)),
+            None => Some(CellRef::None),
         }
     }
 
@@ -157,5 +157,90 @@ impl Column for ArrayUSize {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+
+    fn convert_col(&self, to: DataType) -> Box<dyn Column> {
+        let iter = self.iter().copied();
+
+        match to {
+            DataType::USize => Box::new(self.clone()),
+            DataType::U32 => {
+                let mut array = ArrayU32::from_iterator_option(
+                    iter.map(|value| value.map(|value| value as u32)),
+                );
+
+                if let Some(header) = self.header.as_ref() {
+                    array.set_header(header.clone());
+                }
+
+                Box::new(array)
+            }
+            DataType::I32 => {
+                let mut array = ArrayI32::from_iterator_option(
+                    iter.map(|value| value.map(|value| value as i32)),
+                );
+
+                if let Some(header) = self.header.as_ref() {
+                    array.set_header(header.clone());
+                }
+
+                Box::new(array)
+            }
+            DataType::ISize => {
+                let mut array = ArrayISize::from_iterator_option(
+                    iter.map(|value| value.map(|value| value as isize)),
+                );
+
+                if let Some(header) = self.header.as_ref() {
+                    array.set_header(header.clone());
+                }
+
+                Box::new(array)
+            }
+            DataType::F32 => {
+                let mut array = ArrayF32::from_iterator_option(
+                    iter.map(|value| value.map(|value| value as f32)),
+                );
+
+                if let Some(header) = self.header.as_ref() {
+                    array.set_header(header.clone());
+                }
+
+                Box::new(array)
+            }
+            DataType::F64 => {
+                let mut array = ArrayF64::from_iterator_option(
+                    iter.map(|value| value.map(|value| value as f64)),
+                );
+
+                if let Some(header) = self.header.as_ref() {
+                    array.set_header(header.clone());
+                }
+
+                Box::new(array)
+            }
+            DataType::Bool => {
+                let mut array = ArrayBool::from_iterator_option(
+                    iter.map(|value| value.map(|value| value != 0)),
+                );
+
+                if let Some(header) = self.header.as_ref() {
+                    array.set_header(header.clone());
+                }
+
+                Box::new(array)
+            }
+            DataType::Text => {
+                let mut array = ArrayText::from_iterator_option(
+                    iter.map(|value| value.map(|value| value.to_string())),
+                );
+
+                if let Some(header) = self.header.as_ref() {
+                    array.set_header(header.clone());
+                }
+
+                Box::new(array)
+            }
+        }
     }
 }

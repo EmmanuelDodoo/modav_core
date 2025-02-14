@@ -1,4 +1,4 @@
-use super::{parse_helper, parse_unchecked, utils::*, Iter, IterMut};
+use super::{arrays::*, parse_helper, parse_unchecked, utils::*, Iter, IterMut};
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ArrayF32 {
@@ -46,11 +46,11 @@ impl ArrayF32 {
         self.cells.iter_mut()
     }
 
-    pub fn parse_str(values: &Vec<String>) -> Option<Self> {
+    pub fn parse_str(values: &Vec<String>, null: &str) -> Option<Self> {
         let mut cells = Vec::default();
 
         for value in values {
-            let parsed = parse_helper::<f32>(value).ok()?;
+            let parsed = parse_helper::<f32>(value, null).ok()?;
             cells.push(parsed)
         }
 
@@ -62,8 +62,8 @@ impl ArrayF32 {
 }
 
 impl Sealed for ArrayF32 {
-    fn push(&mut self, value: &str) {
-        let parsed = parse_unchecked::<f32>(value);
+    fn push(&mut self, value: &str, null: &str) {
+        let parsed = parse_unchecked::<f32>(value, null);
         self.cells.push(parsed)
     }
 
@@ -74,12 +74,12 @@ impl Sealed for ArrayF32 {
         self.cells.remove(idx);
     }
 
-    fn insert(&mut self, value: &str, idx: usize) {
+    fn insert(&mut self, value: &str, idx: usize, null: &str) {
         if idx > self.len() {
             return;
         }
 
-        let parsed = parse_unchecked::<f32>(value);
+        let parsed = parse_unchecked::<f32>(value, null);
 
         self.cells.insert(idx, parsed);
     }
@@ -112,8 +112,8 @@ impl Column for ArrayF32 {
         self.header = Some(header);
     }
 
-    fn set_position(&mut self, value: &str, idx: usize) -> bool {
-        let Ok(parsed) = parse_helper::<f32>(value) else {
+    fn set_position(&mut self, value: &str, idx: usize, null: &str) -> bool {
+        let Ok(parsed) = parse_helper::<f32>(value, null) else {
             return false;
         };
 
@@ -136,10 +136,10 @@ impl Column for ArrayF32 {
         self.cells.swap(x, y);
     }
 
-    fn data_ref(&self, idx: usize) -> Option<DataRef<'_>> {
+    fn data_ref(&self, idx: usize) -> Option<CellRef<'_>> {
         match self.cells.get(idx)? {
-            Some(value) => Some(DataRef::F32(*value)),
-            None => Some(DataRef::None),
+            Some(value) => Some(CellRef::F32(*value)),
+            None => Some(CellRef::None),
         }
     }
 
@@ -157,5 +157,90 @@ impl Column for ArrayF32 {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+
+    fn convert_col(&self, to: DataType) -> Box<dyn Column> {
+        let iter = self.iter().copied();
+
+        match to {
+            DataType::F32 => Box::new(self.clone()),
+            DataType::U32 => {
+                let mut array = ArrayU32::from_iterator_option(
+                    iter.map(|value| value.map(|value| value as u32)),
+                );
+
+                if let Some(header) = self.header.as_ref() {
+                    array.set_header(header.clone());
+                }
+
+                Box::new(array)
+            }
+            DataType::USize => {
+                let mut array = ArrayUSize::from_iterator_option(
+                    iter.map(|value| value.map(|value| value as usize)),
+                );
+
+                if let Some(header) = self.header.as_ref() {
+                    array.set_header(header.clone());
+                }
+
+                Box::new(array)
+            }
+            DataType::ISize => {
+                let mut array = ArrayISize::from_iterator_option(
+                    iter.map(|value| value.map(|value| value as isize)),
+                );
+
+                if let Some(header) = self.header.as_ref() {
+                    array.set_header(header.clone());
+                }
+
+                Box::new(array)
+            }
+            DataType::I32 => {
+                let mut array = ArrayI32::from_iterator_option(
+                    iter.map(|value| value.map(|value| value as i32)),
+                );
+
+                if let Some(header) = self.header.as_ref() {
+                    array.set_header(header.clone());
+                }
+
+                Box::new(array)
+            }
+            DataType::F64 => {
+                let mut array = ArrayF64::from_iterator_option(
+                    iter.map(|value| value.map(|value| value as f64)),
+                );
+
+                if let Some(header) = self.header.as_ref() {
+                    array.set_header(header.clone());
+                }
+
+                Box::new(array)
+            }
+            DataType::Bool => {
+                let mut array = ArrayBool::from_iterator_option(
+                    iter.map(|value| value.map(|value| value != 0.0)),
+                );
+
+                if let Some(header) = self.header.as_ref() {
+                    array.set_header(header.clone());
+                }
+
+                Box::new(array)
+            }
+            DataType::Text => {
+                let mut array = ArrayText::from_iterator_option(
+                    iter.map(|value| value.map(|value| value.to_string())),
+                );
+
+                if let Some(header) = self.header.as_ref() {
+                    array.set_header(header.clone());
+                }
+
+                Box::new(array)
+            }
+        }
     }
 }

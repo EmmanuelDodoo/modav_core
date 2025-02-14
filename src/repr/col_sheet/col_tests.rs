@@ -1,6 +1,6 @@
 #![cfg(test)]
 use super::{
-    index_sort_swap, ArrayI32, ArrayText, Column, ColumnHeader, ColumnSheet, DataRef, DataType,
+    index_sort_swap, ArrayI32, ArrayText, CellRef, Column, ColumnHeader, ColumnSheet, DataType,
     HeaderLabelStrategy, SheetBuilder, TypesStrategy,
 };
 use crate::repr::ColumnType;
@@ -58,9 +58,9 @@ fn flexible() {
     assert_eq!(4, sht.width());
     assert_eq!(12, sht.height());
 
-    assert_eq!(Some(DataRef::None), sht.get_cell(2, 7));
-    assert_eq!(Some(DataRef::None), sht.get_cell(3, 7));
-    assert_eq!(Some(DataRef::None), sht.get_cell(3, 6));
+    assert_eq!(Some(CellRef::None), sht.get_cell(2, 7));
+    assert_eq!(Some(CellRef::None), sht.get_cell(3, 7));
+    assert_eq!(Some(CellRef::None), sht.get_cell(3, 6));
 }
 
 #[test]
@@ -133,11 +133,11 @@ fn test_cells() {
 
     let mut sht = create_air_csv();
     assert!(sht.get_cell(100, 100).is_none());
-    assert_eq!(Some(DataRef::I32(420)), sht.get_cell(2, 4));
+    assert_eq!(Some(CellRef::I32(420)), sht.get_cell(2, 4));
 
     assert!(sht.set_cell("aa", 2, 4).is_err());
     assert!(sht.set_cell("69", 2, 4).is_ok());
-    assert_eq!(Some(DataRef::I32(69)), sht.get_cell(2, 4));
+    assert_eq!(Some(CellRef::I32(69)), sht.get_cell(2, 4));
 }
 
 #[test]
@@ -412,10 +412,10 @@ fn test_rows() {
     let row = sht.get_row(5).unwrap();
     assert_eq!(
         vec![
-            DataRef::Text("SOME"),
-            DataRef::I32(0),
-            DataRef::I32(1),
-            DataRef::I32(2),
+            CellRef::Text("SOME"),
+            CellRef::I32(0),
+            CellRef::I32(1),
+            CellRef::I32(2),
         ],
         row
     );
@@ -423,10 +423,10 @@ fn test_rows() {
     let row = sht.get_row(0).unwrap();
     assert_eq!(
         vec![
-            DataRef::Text("JAN"),
-            DataRef::I32(340),
-            DataRef::I32(360),
-            DataRef::I32(417),
+            CellRef::Text("JAN"),
+            CellRef::I32(340),
+            CellRef::I32(360),
+            CellRef::I32(417),
         ],
         row
     );
@@ -437,20 +437,20 @@ fn test_rows() {
 
     assert_eq!(
         vec![
-            DataRef::Text("NOV"),
-            DataRef::I32(310),
-            DataRef::I32(362),
-            DataRef::I32(390),
+            CellRef::Text("NOV"),
+            CellRef::I32(310),
+            CellRef::I32(362),
+            CellRef::I32(390),
         ],
         sht.get_row(0).unwrap()
     );
 
     assert_eq!(
         vec![
-            DataRef::Text("OCT"),
-            DataRef::I32(359),
-            DataRef::I32(407),
-            DataRef::I32(461),
+            CellRef::Text("OCT"),
+            CellRef::I32(359),
+            CellRef::I32(407),
+            CellRef::I32(461),
         ],
         sht.get_row(5).unwrap()
     );
@@ -463,10 +463,10 @@ fn test_rows() {
     assert!(sht.swap_rows(1, 1).is_ok());
     assert_eq!(
         vec![
-            DataRef::Text("FEB"),
-            DataRef::I32(318),
-            DataRef::I32(342),
-            DataRef::I32(391),
+            CellRef::Text("FEB"),
+            CellRef::I32(318),
+            CellRef::I32(342),
+            CellRef::I32(391),
         ],
         sht.get_row(1).unwrap()
     );
@@ -474,10 +474,10 @@ fn test_rows() {
     assert!(sht.swap_rows(1, 3).is_ok());
     assert_eq!(
         vec![
-            DataRef::Text("APR"),
-            DataRef::I32(348),
-            DataRef::I32(396),
-            DataRef::I32(461),
+            CellRef::Text("APR"),
+            CellRef::I32(348),
+            CellRef::I32(396),
+            CellRef::I32(461),
         ],
         sht.get_row(1).unwrap()
     );
@@ -486,7 +486,7 @@ fn test_rows() {
     assert!(sht.clear_row(100).is_err());
     assert!(sht.clear_row(1).is_ok());
     assert_eq!(
-        vec![DataRef::None, DataRef::None, DataRef::None, DataRef::None,],
+        vec![CellRef::None, CellRef::None, CellRef::None, CellRef::None,],
         sht.get_row(1).unwrap()
     );
 
@@ -497,10 +497,10 @@ fn test_rows() {
     assert_eq!(11, sht.height());
     assert_eq!(
         vec![
-            DataRef::Text("JUL"),
-            DataRef::I32(491),
-            DataRef::I32(548),
-            DataRef::I32(622),
+            CellRef::Text("JUL"),
+            CellRef::I32(491),
+            CellRef::I32(548),
+            CellRef::I32(622),
         ],
         sht.get_row(5).unwrap()
     );

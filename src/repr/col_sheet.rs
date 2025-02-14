@@ -47,6 +47,8 @@ mod col_tests;
 use super::builders::SheetBuilder;
 use super::utils::{ColumnType as CT, HeaderLabelStrategy, TypesStrategy};
 
+const NULL: &str = "<null>";
+
 /// Wrapper type for [`ColumnType`] and [`TypesStrategy`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum ColumnType {
@@ -92,6 +94,8 @@ pub struct ColumnSheet {
     primary: Option<usize>,
     /// The number of cells in a column
     height: usize,
+    /// The string which should be considered null.
+    null_string: String,
 }
 
 impl ColumnSheet {
@@ -113,6 +117,7 @@ impl ColumnSheet {
             type_strategy,
         } = builder;
 
+        let null_string = NULL.to_string();
         let trim = if trim { Trim::All } else { Trim::None };
         let has_headers = label_strategy == HeaderLabelStrategy::ReadLabels;
 
@@ -187,7 +192,8 @@ impl ColumnSheet {
         headers.resize_with(longest, Default::default);
         cols.resize_with(longest, Default::default);
 
-        let columns: Vec<Box<dyn Column>> = Self::create_columns(cols, headers, type_strategy);
+        let columns: Vec<Box<dyn Column>> =
+            Self::create_columns(cols, headers, type_strategy, &null_string);
         let primary = if columns.is_empty() {
             None
         } else {
@@ -198,6 +204,7 @@ impl ColumnSheet {
             columns,
             primary,
             height,
+            null_string,
         })
     }
 
@@ -207,6 +214,7 @@ impl ColumnSheet {
         cols: Vec<Vec<String>>,
         headers: Vec<Option<String>>,
         type_strategy: TypesStrategy,
+        null: &str,
     ) -> Vec<Box<dyn Column>> {
         // Dropping extra unused headers is most likely okay so the less than
         // comparison is okay.
@@ -220,7 +228,7 @@ impl ColumnSheet {
         cols.into_iter()
             .zip(headers)
             .zip(strategies)
-            .map(|((col, header), kind)| parse_column(col, header, kind))
+            .map(|((col, header), kind)| parse_column(col, header, kind, null))
             .collect()
     }
 
@@ -235,7 +243,7 @@ impl ColumnSheet {
     }
 
     /// Returns a reference to the value within the cell at column `col`, row `row`
-    pub fn get_cell(&self, col: usize, row: usize) -> Option<DataRef> {
+    pub fn get_cell(&self, col: usize, row: usize) -> Option<CellRef> {
         self.columns.get(col).and_then(|col| col.data_ref(row))
     }
 
@@ -250,11 +258,11 @@ impl ColumnSheet {
             return Err(Error::InvalidRow(row));
         }
 
-        let success = self
-            .columns
-            .get_mut(col)
-            .unwrap()
-            .set_position(value.as_ref(), row);
+        let success =
+            self.columns
+                .get_mut(col)
+                .unwrap()
+                .set_position(value.as_ref(), row, &self.null_string);
 
         if !success {
             return Err(Error::InvalidCellInput { col, row });
@@ -264,7 +272,7 @@ impl ColumnSheet {
     }
 
     /// Returns the row at index `row` within the [`ColumnSheet`] if any.
-    pub fn get_row(&self, row: usize) -> Option<Vec<DataRef<'_>>> {
+    pub fn get_row(&self, row: usize) -> Option<Vec<CellRef<'_>>> {
         if row >= self.height {
             return None;
         }
@@ -466,6 +474,12 @@ impl ColumnSheet {
         self.primary
     }
 
+    /// Returns the string considered as a null input for the [`ColumnSheet`] as
+    /// a string slice.
+    pub fn get_null_string(&self) -> &str {
+        &self.null_string
+    }
+
     /// Sets the primary column of the [`ColumnSheet`] to [`None`].
     pub fn clear_primary(&mut self) {
         self.primary = None;
@@ -511,8 +525,21 @@ impl ColumnSheet {
         self.insert_row(row, self.height)
     }
 
-    /// Removes the last [`Column`] from the [`ColumnSheet`].
-    pub fn pop_col(&mut self) -> Result<()> {
+    /// Duplicates  the [`Column`] at `col`. The duplicate column is inserted at
+    /// `col`, shifting all [`Column`]s after to the right.
+    pub fn duplicate_col(&mut self, idx: usize) -> Result<()> {
+        if idx >= self.width() {
+            return Err(Error::InvalidColumn(idx));
+        }
+
+        let column = &self.columns[idx];
+        let copy = column.convert_col(column.kind());
+
+        self.insert_col(copy, idx)
+    }
+
+    /// Removes and returns the last [`Column`] from the [`ColumnSheet`].
+    pub fn pop_col(&mut self) -> Result<Box<dyn Column>> {
         if self.width() == 0 {
             return Err(Error::InvalidColumn(0));
         }
@@ -529,18 +556,18 @@ impl ColumnSheet {
         self.remove_row(self.height - 1)
     }
 
-    /// Removes the column at `idx` shifting all values to the left
+    /// Removes and returns the [`Column`] at `idx` shifting all values to the left
     ///
     /// Returns `Err` if `idx` >= `self.width`  
-    pub fn remove_col(&mut self, idx: usize) -> Result<()> {
+    pub fn remove_col(&mut self, idx: usize) -> Result<Box<dyn Column>> {
         if idx >= self.width() {
             return Err(Error::InvalidColumn(idx));
         }
 
-        self.columns.remove(idx);
+        let removed = self.columns.remove(idx);
 
         let Some(primary) = self.primary else {
-            return Ok(());
+            return Ok(removed);
         };
 
         if self.true_is_empty() {
@@ -549,7 +576,7 @@ impl ColumnSheet {
             self.primary = Some(primary - 1);
         }
 
-        Ok(())
+        Ok(removed)
     }
 
     /// Removes all [`Column`]s within the [`ColumnSheet`].
@@ -643,7 +670,12 @@ impl ColumnSheet {
                 .map(|value| vec![value.as_ref().to_owned()])
                 .collect::<Vec<Vec<String>>>();
             let len = cols.len();
-            let columns = Self::create_columns(cols, vec![None; len], TypesStrategy::Infer);
+            let columns = Self::create_columns(
+                cols,
+                vec![None; len],
+                TypesStrategy::Infer,
+                &self.null_string,
+            );
 
             self.columns = columns;
 
@@ -654,7 +686,7 @@ impl ColumnSheet {
             self.columns
                 .iter_mut()
                 .zip(row)
-                .for_each(|(column, value)| column.insert(value.as_ref(), idx));
+                .for_each(|(column, value)| column.insert(value.as_ref(), idx, &self.null_string));
         }
 
         self.height += 1;
@@ -746,11 +778,52 @@ impl ColumnSheet {
 
         Ok(())
     }
+
+    /// Converts the [`Column`] at `idx`index to a `to` type column.
+    ///
+    /// Unlike [`ColumnSheet::convert_col`], this does not check for [`DataType`]
+    /// compatibility which could lead to loss of information and inaccuracies.
+    pub fn convert_col_unchecked(&mut self, idx: usize, to: DataType) -> Result<()> {
+        if idx >= self.width() {
+            return Err(Error::InvalidColumn(idx));
+        }
+
+        let from = &self.columns[idx];
+        let new = from.convert_col(to);
+
+        self.columns.push(new);
+        self.columns.swap_remove(idx);
+
+        Ok(())
+    }
+
+    /// Converts the [`Column`] at `idx`index to a `to` type column.
+    ///
+    /// Returns an error if [`Column::kind`] is incompatible with `to`.
+    pub fn convert_col(&mut self, idx: usize, to: DataType) -> Result<()> {
+        if idx >= self.width() {
+            return Err(Error::InvalidColumn(idx));
+        }
+
+        let from = &self.columns[idx];
+        let from = from.kind();
+
+        if DataType::can_convert(from, to) {
+            self.convert_col_unchecked(idx, to)
+        } else {
+            Err(Error::InvalidColConversion { col: idx, from, to })
+        }
+    }
 }
 
-fn parse_column(col: Vec<String>, header: Option<String>, strategy: ColumnType) -> Box<dyn Column> {
+fn parse_column(
+    col: Vec<String>,
+    header: Option<String>,
+    strategy: ColumnType,
+    null: &str,
+) -> Box<dyn Column> {
     let text = |col: Vec<String>, header: Option<String>| {
-        let mut array = ArrayText::parse_str(&col);
+        let mut array = ArrayText::parse_str(&col, null);
         if let Some(header) = header {
             array.set_header(header);
         }
@@ -761,49 +834,49 @@ fn parse_column(col: Vec<String>, header: Option<String>, strategy: ColumnType) 
         ColumnType::None => text(col, header),
 
         ColumnType::Infer => {
-            if let Some(mut array) = ArrayI32::parse_str(&col) {
+            if let Some(mut array) = ArrayI32::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
                 return Box::new(array);
             };
 
-            if let Some(mut array) = ArrayU32::parse_str(&col) {
+            if let Some(mut array) = ArrayU32::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
                 return Box::new(array);
             };
 
-            if let Some(mut array) = ArrayISize::parse_str(&col) {
+            if let Some(mut array) = ArrayISize::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
                 return Box::new(array);
             };
 
-            if let Some(mut array) = ArrayUSize::parse_str(&col) {
+            if let Some(mut array) = ArrayUSize::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
                 return Box::new(array);
             };
 
-            if let Some(mut array) = ArrayBool::parse_str(&col) {
+            if let Some(mut array) = ArrayBool::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
                 return Box::new(array);
             };
 
-            if let Some(mut array) = ArrayF32::parse_str(&col) {
+            if let Some(mut array) = ArrayF32::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
                 return Box::new(array);
             };
 
-            if let Some(mut array) = ArrayF64::parse_str(&col) {
+            if let Some(mut array) = ArrayF64::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
@@ -816,14 +889,14 @@ fn parse_column(col: Vec<String>, header: Option<String>, strategy: ColumnType) 
         ColumnType::Type(CT::None) | ColumnType::Type(CT::Text) => text(col, header),
 
         ColumnType::Type(CT::Integer) => {
-            if let Some(mut array) = ArrayI32::parse_str(&col) {
+            if let Some(mut array) = ArrayI32::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
                 return Box::new(array);
             };
 
-            if let Some(mut array) = ArrayU32::parse_str(&col) {
+            if let Some(mut array) = ArrayU32::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
@@ -834,14 +907,14 @@ fn parse_column(col: Vec<String>, header: Option<String>, strategy: ColumnType) 
         }
 
         ColumnType::Type(CT::Number) => {
-            if let Some(mut array) = ArrayISize::parse_str(&col) {
+            if let Some(mut array) = ArrayISize::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
                 return Box::new(array);
             };
 
-            if let Some(mut array) = ArrayUSize::parse_str(&col) {
+            if let Some(mut array) = ArrayUSize::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
@@ -852,14 +925,14 @@ fn parse_column(col: Vec<String>, header: Option<String>, strategy: ColumnType) 
         }
 
         ColumnType::Type(CT::Float) => {
-            if let Some(mut array) = ArrayF32::parse_str(&col) {
+            if let Some(mut array) = ArrayF32::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
                 return Box::new(array);
             };
 
-            if let Some(mut array) = ArrayF64::parse_str(&col) {
+            if let Some(mut array) = ArrayF64::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
@@ -870,7 +943,7 @@ fn parse_column(col: Vec<String>, header: Option<String>, strategy: ColumnType) 
         }
 
         ColumnType::Type(CT::Boolean) => {
-            if let Some(mut array) = ArrayBool::parse_str(&col) {
+            if let Some(mut array) = ArrayBool::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
@@ -894,10 +967,24 @@ mod error {
         InvalidColumn(usize),
         InvalidRow(usize),
         InvalidPrimary(usize),
-        InvalidColumnHeight { own: usize, other: usize },
-        InvalidRowWidth { own: usize, other: usize },
+        InvalidColumnHeight {
+            own: usize,
+            other: usize,
+        },
+        InvalidRowWidth {
+            own: usize,
+            other: usize,
+        },
         InvalidInsertion(usize),
-        InvalidCellInput { col: usize, row: usize },
+        InvalidCellInput {
+            col: usize,
+            row: usize,
+        },
+        InvalidColConversion {
+            col: usize,
+            from: DataType,
+            to: DataType,
+        },
     }
 
     impl From<CSVError> for Error {
@@ -924,6 +1011,12 @@ mod error {
                 }
                 Self::InvalidCellInput { col, row } => {
                     write!(f, "Invalid input for cell at column: {col}, row: {row}")
+                }
+                Self::InvalidColConversion { col, from, to } => {
+                    write!(
+                        f,
+                        "Invalid column conversion from {from} to {to} at column {col}"
+                    )
                 }
             }
         }
@@ -956,4 +1049,11 @@ fn index_sort_swap(indices: &mut [usize]) {
             pos += 1
         }
     }
+}
+
+/// Dont want to have to type these out every time.
+mod arrays {
+    pub use super::{
+        ArrayBool, ArrayF32, ArrayF64, ArrayI32, ArrayISize, ArrayText, ArrayU32, ArrayUSize,
+    };
 }
