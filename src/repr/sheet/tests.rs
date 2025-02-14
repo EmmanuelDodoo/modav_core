@@ -8,14 +8,12 @@ use std::usize;
 use crate::models::Scale;
 
 use super::{
-    builders::SheetBuilder,
     error::*,
     utils::{
         BarChartAxisLabelStrategy, BarChartBarLabels, ColumnHeader, ColumnType, Data,
-        HeaderLabelStrategy, HeaderTypesStrategy, LineLabelStrategy,
-        StackedBarChartAxisLabelStrategy,
+        LineLabelStrategy, StackedBarChartAxisLabelStrategy, TypesStrategy,
     },
-    Cell, Row, Sheet,
+    Cell, Config, HeaderStrategy, Row, Sheet,
 };
 
 fn create_row() -> Row {
@@ -33,12 +31,12 @@ fn create_air_csv() -> Result<Sheet> {
         ColumnType::Integer,
     ];
 
-    SheetBuilder::new(path.clone())
+    let config = Config::new(path.clone())
         .trim(true)
         .primary(0)
-        .types(HeaderTypesStrategy::Provided(ct))
-        .labels(HeaderLabelStrategy::ReadLabels)
-        .build()
+        .types(TypesStrategy::Provided(ct))
+        .labels(HeaderStrategy::ReadLabels);
+    Sheet::with_config(config)
 }
 
 #[test]
@@ -187,12 +185,13 @@ fn test_sheet_builder() {
         ColumnType::Integer,
     ];
 
-    let res = SheetBuilder::new(path.clone())
+    let config = Config::new(path.clone())
         .trim(true)
         .primary(0)
-        .labels(HeaderLabelStrategy::ReadLabels)
-        .types(HeaderTypesStrategy::Provided(ct))
-        .build();
+        .labels(HeaderStrategy::ReadLabels)
+        .types(TypesStrategy::Provided(ct));
+
+    let res = Sheet::with_config(config);
 
     match res {
         Ok(sht) => {
@@ -218,10 +217,8 @@ fn test_sheet_builder() {
         Err(e) => panic!("{}", e),
     };
 
-    let res = SheetBuilder::new(path.clone())
-        .trim(true)
-        .primary(0)
-        .build();
+    let config = Config::new(path.clone()).trim(true).primary(0);
+    let res = Sheet::with_config(config);
 
     match res {
         Err(e) => panic!("{}", e),
@@ -236,11 +233,12 @@ fn test_sheet_builder() {
 
     let lbl: Vec<String> = vec!["Month".into(), "1958".into(), "1959".into()];
 
-    let res = SheetBuilder::new(path2)
+    let config = Config::new(path2)
         .trim(true)
-        .types(HeaderTypesStrategy::Infer)
-        .labels(HeaderLabelStrategy::Provided(lbl))
-        .build();
+        .types(TypesStrategy::Infer)
+        .labels(HeaderStrategy::Provided(lbl));
+
+    let res = Sheet::with_config(config);
 
     match res {
         Err(e) => panic!("{}", e),
@@ -280,11 +278,12 @@ fn test_col_validation() {
         ColumnType::Integer,
     ];
 
-    let res = SheetBuilder::new(path1)
+    let config = Config::new(path1)
         .trim(true)
-        .labels(HeaderLabelStrategy::ReadLabels)
-        .types(HeaderTypesStrategy::Provided(ct))
-        .build();
+        .labels(HeaderStrategy::ReadLabels)
+        .types(TypesStrategy::Provided(ct));
+
+    let res = Sheet::with_config(config);
 
     match res {
         Err(e) => panic!("{}", e),
@@ -303,12 +302,12 @@ fn test_col_validation2() {
         ColumnType::Integer,
     ];
 
-    if let Err(e) = SheetBuilder::new(path)
+    let config = Config::new(path)
         .trim(true)
-        .labels(HeaderLabelStrategy::ReadLabels)
-        .types(HeaderTypesStrategy::Provided(ct))
-        .build()
-    {
+        .labels(HeaderStrategy::ReadLabels)
+        .types(TypesStrategy::Provided(ct));
+
+    if let Err(e) = Sheet::with_config(config) {
         panic!("{}", e)
     };
 }
@@ -317,11 +316,11 @@ fn test_col_validation2() {
 fn test_empty_csv() {
     let path: PathBuf = "./dummies/csv/empty.csv".into();
 
-    if let Err(e) = SheetBuilder::new(path)
-        .labels(HeaderLabelStrategy::NoLabels)
-        .trim(true)
-        .build()
-    {
+    let config = Config::new(path)
+        .labels(HeaderStrategy::NoLabels)
+        .trim(true);
+
+    if let Err(e) = Sheet::with_config(config) {
         panic!("{}", e)
     }
 }
@@ -330,10 +329,11 @@ fn test_empty_csv() {
 fn testing_empty_field() {
     let path: PathBuf = "./dummies/csv/address.csv".into();
 
-    let res = SheetBuilder::new(path)
-        .labels(HeaderLabelStrategy::NoLabels)
-        .trim(true)
-        .build();
+    let config = Config::new(path)
+        .labels(HeaderStrategy::NoLabels)
+        .trim(true);
+
+    let res = Sheet::with_config(config);
 
     match res {
         Err(e) => panic!("{}", e),
@@ -348,11 +348,12 @@ fn testing_empty_field() {
 fn testing_flexible() {
     let path: PathBuf = "./dummies/csv/flexible.csv".into();
 
-    let res = SheetBuilder::new(path)
+    let config = Config::new(path)
         .trim(true)
-        .labels(HeaderLabelStrategy::NoLabels)
-        .flexible(true)
-        .build();
+        .labels(HeaderStrategy::NoLabels)
+        .flexible(true);
+
+    let res = Sheet::with_config(config);
 
     match res {
         Err(e) => panic!("{}", e),
@@ -374,11 +375,12 @@ fn test_sort() {
         ColumnType::Integer,
     ];
 
-    let res = SheetBuilder::new(path)
+    let config = Config::new(path)
         .trim(true)
-        .labels(HeaderLabelStrategy::ReadLabels)
-        .types(HeaderTypesStrategy::Provided(ct))
-        .build();
+        .labels(HeaderStrategy::ReadLabels)
+        .types(TypesStrategy::Provided(ct));
+
+    let res = Sheet::with_config(config);
 
     match res {
         Err(e) => panic!("{}", e),
@@ -422,11 +424,12 @@ fn test_sort_reversed() {
         ColumnType::Integer,
     ];
 
-    let res = SheetBuilder::new(path)
+    let config = Config::new(path)
         .trim(true)
-        .labels(HeaderLabelStrategy::ReadLabels)
-        .types(HeaderTypesStrategy::Provided(ct))
-        .build();
+        .labels(HeaderStrategy::ReadLabels)
+        .types(TypesStrategy::Provided(ct));
+
+    let res = Sheet::with_config(config);
 
     match res {
         Err(e) => panic!("{}", e),
@@ -463,7 +466,9 @@ fn test_sort_reversed() {
 fn test_sort_panic() {
     let path: PathBuf = "./dummies/csv/air.csv".into();
 
-    let res = SheetBuilder::new(path).build();
+    let config = Config::new(path);
+
+    let res = Sheet::with_config(config);
 
     match res {
         Err(e) => panic!("{}", e),
@@ -510,14 +515,14 @@ fn test_create_line_graph() {
 fn test_line_scales() {
     let path: PathBuf = "./dummies/csv/alter.csv".into();
 
-    let sht = SheetBuilder::new(path.clone())
+    let config = Config::new(path.clone())
         .trim(true)
         .flexible(false)
         .primary(0)
-        .types(HeaderTypesStrategy::Infer)
-        .labels(HeaderLabelStrategy::ReadLabels)
-        .build()
-        .expect("Building alter csv failure");
+        .types(TypesStrategy::Infer)
+        .labels(HeaderStrategy::ReadLabels);
+
+    let sht = Sheet::with_config(config).expect("Building alter csv failure");
 
     let mut line = sht
         .create_line_graph(
@@ -598,13 +603,14 @@ fn test_transpose_flexible() {
 
     let ct = vec![ColumnType::Text, ColumnType::Integer, ColumnType::Integer];
 
-    let res = SheetBuilder::new(path)
+    let config = Config::new(path)
         .trim(true)
-        .labels(HeaderLabelStrategy::ReadLabels)
-        .types(HeaderTypesStrategy::Provided(ct))
+        .labels(HeaderStrategy::ReadLabels)
+        .types(TypesStrategy::Provided(ct))
         .flexible(true)
-        .primary(0)
-        .build();
+        .primary(0);
+
+    let res = Sheet::with_config(config);
 
     match res {
         Err(e) => panic!("Transpose flexible: {}", e),
@@ -642,10 +648,8 @@ fn test_transpose_flexible() {
 #[test]
 fn test_transpose_headless() {
     let path: PathBuf = "./dummies/csv/headless.csv".into();
-    match SheetBuilder::new(path)
-        .labels(HeaderLabelStrategy::NoLabels)
-        .build()
-    {
+    let config = Config::new(path).labels(HeaderStrategy::NoLabels);
+    match Sheet::with_config(config) {
         Err(e) => panic!("{}", e),
         Ok(sht) => match Sheet::transpose(&sht, None) {
             Err(e) => panic!("{}", e),
@@ -673,12 +677,11 @@ fn test_transpose_symmetry() {
 
     let labels: Vec<String> = vec![];
 
-    match SheetBuilder::new(headless)
-        .labels(HeaderLabelStrategy::Provided(labels))
-        .types(HeaderTypesStrategy::Infer)
-        .trim(true)
-        .build()
-    {
+    let config = Config::new(headless)
+        .labels(HeaderStrategy::Provided(labels))
+        .types(TypesStrategy::Infer)
+        .trim(true);
+    match Sheet::with_config(config) {
         Err(e) => panic!("{}", e),
         Ok(sh) => match Sheet::transpose(&sh, None) {
             Err(e) => panic!("{}", e),
@@ -694,13 +697,12 @@ fn test_transpose_symmetry() {
     let flexible: PathBuf = "./dummies/csv/transpose1.csv".into();
     let ct = vec![ColumnType::Text, ColumnType::Integer, ColumnType::Integer];
 
-    match SheetBuilder::new(flexible)
-        .labels(HeaderLabelStrategy::ReadLabels)
+    let config = Config::new(flexible)
+        .labels(HeaderStrategy::ReadLabels)
         .flexible(true)
-        .types(HeaderTypesStrategy::Provided(ct))
-        .trim(true)
-        .build()
-    {
+        .types(TypesStrategy::Provided(ct))
+        .trim(true);
+    match Sheet::with_config(config) {
         Err(e) => panic!("{}", e),
         Ok(sh) => match Sheet::transpose(&sh, None) {
             Err(e) => panic!("{}", e),
@@ -727,11 +729,12 @@ fn test_transpose_symmetry() {
 fn test_infer_types() {
     let path: PathBuf = "./dummies/csv/infer.csv".into();
 
-    let res = SheetBuilder::new(path)
-        .labels(HeaderLabelStrategy::ReadLabels)
+    let config = Config::new(path)
+        .labels(HeaderStrategy::ReadLabels)
         .trim(true)
-        .types(HeaderTypesStrategy::Infer)
-        .build();
+        .types(TypesStrategy::Infer);
+
+    let res = Sheet::with_config(config);
 
     match res {
         Err(e) => panic!("{}", e),
@@ -755,12 +758,12 @@ fn test_infer_types() {
 fn test_create_bar_chart() {
     let path: PathBuf = "./dummies/csv/infer.csv".into();
 
-    let res = SheetBuilder::new(path)
-        .labels(HeaderLabelStrategy::ReadLabels)
+    let config = Config::new(path)
+        .labels(HeaderStrategy::ReadLabels)
         .trim(true)
-        .types(HeaderTypesStrategy::Infer)
-        .build()
-        .unwrap();
+        .types(TypesStrategy::Infer);
+
+    let res = Sheet::with_config(config).unwrap();
 
     let barchart = res
         .clone()
@@ -903,12 +906,12 @@ fn test_create_bar_chart() {
 fn test_stacked_bar_char() {
     let path: PathBuf = "./dummies/csv/stacked.csv".into();
 
-    let res = SheetBuilder::new(path)
-        .labels(HeaderLabelStrategy::ReadLabels)
+    let config = Config::new(path)
+        .labels(HeaderStrategy::ReadLabels)
         .trim(true)
-        .types(HeaderTypesStrategy::Infer)
-        .build()
-        .unwrap();
+        .types(TypesStrategy::Infer);
+
+    let res = Sheet::with_config(config).unwrap();
 
     let labels = HashSet::from([
         String::from("Soda"),
@@ -1031,12 +1034,12 @@ fn test_stacked_bar_char() {
 
     let path: PathBuf = "./dummies/csv/stacked_neg.csv".into();
 
-    let res = SheetBuilder::new(path)
-        .labels(HeaderLabelStrategy::ReadLabels)
+    let config = Config::new(path)
+        .labels(HeaderStrategy::ReadLabels)
         .trim(true)
-        .types(HeaderTypesStrategy::Infer)
-        .build()
-        .unwrap();
+        .types(TypesStrategy::Infer);
+
+    let res = Sheet::with_config(config).unwrap();
 
     let stacked = res
         .clone()
