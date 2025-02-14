@@ -117,7 +117,7 @@ The `ColumnType` enum represents the value type of `Data` stored within a column
 
 ## 3.1 From CSV
 
-Sheet construction from CSV is handled by the `SheetBuilder` within the builders module.
+Sheet construction from CSV is handled by the `Config` within the builders module.shsh
 
 ### Capabilities
 
@@ -126,7 +126,7 @@ Sheet construction from CSV is handled by the `SheetBuilder` within the builders
 - Future builders for other data formats should implement a builder interface for uniformity
 - Note: A default interface might not be possible for builders that read data from a file, as they require a file path
 
-### SheetBuilder Fields
+### Config Fields
 
 | Field | Default | Description |
 | --- | --- | --- |

@@ -44,10 +44,8 @@ pub use arraybool::*;
 
 mod col_tests;
 
-use super::builders::SheetBuilder;
-use super::utils::{ColumnType as CT, HeaderLabelStrategy, TypesStrategy};
-
-const NULL: &str = "<null>";
+use super::config::*;
+use super::utils::{ColumnType as CT, TypesStrategy};
 
 /// Wrapper type for [`ColumnType`] and [`TypesStrategy`].
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -100,14 +98,14 @@ pub struct ColumnSheet {
 
 impl ColumnSheet {
     /// Constructs a [`ColumnSheet`] from the provided path using the default
-    /// [`SheetBuilder`].
+    /// [`Config`].
     pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self> {
-        Self::from_builder(SheetBuilder::new(path))
+        Self::with_config(Config::new(path))
     }
 
-    /// Constructs a [`ColumnSheet`] using a configured [`SheetBuilder`].
-    pub fn from_builder<P: AsRef<Path>>(builder: SheetBuilder<P>) -> Result<Self> {
-        let SheetBuilder {
+    /// Constructs a [`ColumnSheet`] using a configured [`Config`].
+    pub fn with_config<P: AsRef<Path>>(config: Config<P>) -> Result<Self> {
+        let Config {
             path,
             primary,
             trim,
@@ -115,11 +113,11 @@ impl ColumnSheet {
             delimiter,
             label_strategy,
             type_strategy,
-        } = builder;
+            null_string,
+        } = config;
 
-        let null_string = NULL.to_string();
         let trim = if trim { Trim::All } else { Trim::None };
-        let has_headers = label_strategy == HeaderLabelStrategy::ReadLabels;
+        let has_headers = label_strategy == HeaderStrategy::ReadLabels;
 
         let mut rdr = ReaderBuilder::new()
             .has_headers(has_headers)
@@ -173,9 +171,9 @@ impl ColumnSheet {
         //    .for_each(|col| col.resize_with(height, Default::default));
 
         let mut headers = match label_strategy {
-            HeaderLabelStrategy::NoLabels => vec![None; cols.len()],
-            HeaderLabelStrategy::Provided(headers) => headers.into_iter().map(Some).collect(),
-            HeaderLabelStrategy::ReadLabels => rdr
+            HeaderStrategy::NoLabels => vec![None; cols.len()],
+            HeaderStrategy::Provided(headers) => headers.into_iter().map(Some).collect(),
+            HeaderStrategy::ReadLabels => rdr
                 .headers()?
                 .into_iter()
                 .map(|header| {
@@ -813,6 +811,14 @@ impl ColumnSheet {
         } else {
             Err(Error::InvalidColConversion { col: idx, from, to })
         }
+    }
+}
+
+impl<P: AsRef<Path>> TryFrom<Config<P>> for ColumnSheet {
+    type Error = Error;
+
+    fn try_from(value: Config<P>) -> Result<Self> {
+        Self::with_config(value)
     }
 }
 

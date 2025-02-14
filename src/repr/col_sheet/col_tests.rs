@@ -1,7 +1,7 @@
 #![cfg(test)]
 use super::{
-    index_sort_swap, ArrayI32, ArrayText, CellRef, Column, ColumnHeader, ColumnSheet, DataType,
-    HeaderLabelStrategy, SheetBuilder, TypesStrategy,
+    index_sort_swap, ArrayI32, ArrayText, CellRef, Column, ColumnHeader, ColumnSheet, Config,
+    DataType, HeaderStrategy, TypesStrategy,
 };
 use crate::repr::ColumnType;
 use proptest::{arbitrary::any, collection, proptest, strategy::Strategy};
@@ -9,13 +9,13 @@ use proptest::{arbitrary::any, collection, proptest, strategy::Strategy};
 const OVERKILL_PROPTEST: bool = false;
 
 fn create_empty() -> ColumnSheet {
-    let builder = SheetBuilder::new("./dummies/csv/empty.csv")
+    let builder = Config::new("./dummies/csv/empty.csv")
         .types(TypesStrategy::Infer)
-        .labels(HeaderLabelStrategy::ReadLabels)
+        .labels(HeaderStrategy::ReadLabels)
         .flexible(false)
         .trim(true);
 
-    ColumnSheet::from_builder(builder).unwrap()
+    ColumnSheet::with_config(builder).unwrap()
 }
 
 fn create_air_csv() -> ColumnSheet {
@@ -28,26 +28,26 @@ fn create_air_csv() -> ColumnSheet {
         ColumnType::Integer,
     ];
 
-    let builder = SheetBuilder::new(path)
+    let builder = Config::new(path)
         .trim(true)
         .primary(0)
         .types(TypesStrategy::Provided(ct))
-        .labels(HeaderLabelStrategy::ReadLabels);
+        .labels(HeaderStrategy::ReadLabels);
 
-    ColumnSheet::from_builder(builder).unwrap()
+    ColumnSheet::with_config(builder).unwrap()
 }
 
 #[test]
 fn flexible() {
     let path = "./dummies/csv/flexible.csv";
 
-    let builder = SheetBuilder::new(path)
+    let builder = Config::new(path)
         .trim(true)
         .flexible(true)
-        .labels(HeaderLabelStrategy::NoLabels)
+        .labels(HeaderStrategy::NoLabels)
         .types(TypesStrategy::Infer);
 
-    let sht = ColumnSheet::from_builder(builder).unwrap();
+    let sht = ColumnSheet::with_config(builder).unwrap();
     let actuals = sht.headers().map(|header| header.kind);
     let expected = [DataType::Text, DataType::I32, DataType::I32, DataType::I32];
 
@@ -67,12 +67,12 @@ fn flexible() {
 fn infer() {
     let path = "./dummies/csv/infer.csv";
 
-    let builder = SheetBuilder::new(path)
+    let builder = Config::new(path)
         .trim(true)
         .types(TypesStrategy::Infer)
-        .labels(HeaderLabelStrategy::ReadLabels);
+        .labels(HeaderStrategy::ReadLabels);
 
-    let sht = ColumnSheet::from_builder(builder).unwrap();
+    let sht = ColumnSheet::with_config(builder).unwrap();
     let actuals = sht.headers().map(|header| header.kind);
     let expected = [
         DataType::Text,
@@ -98,13 +98,13 @@ fn headerless() {
         ColumnType::Integer,
     ];
 
-    let builder = SheetBuilder::new(path)
+    let builder = Config::new(path)
         .trim(true)
         .primary(0)
         .types(TypesStrategy::Provided(ct))
-        .labels(HeaderLabelStrategy::NoLabels);
+        .labels(HeaderStrategy::NoLabels);
 
-    let sht = ColumnSheet::from_builder(builder).unwrap();
+    let sht = ColumnSheet::with_config(builder).unwrap();
     let headers = sht.headers();
     let expected = [
         ColumnHeader {

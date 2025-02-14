@@ -273,39 +273,14 @@ impl default::Default for ColumnHeader {
     }
 }
 
-/// Determines how headers for a `Sheet` are created
 #[derive(Debug, Clone, PartialEq, Default)]
-pub enum HeaderLabelStrategy {
-    #[default]
-    /// No labels for all columns
-    NoLabels,
-    /// First csv row taken as labels
-    ReadLabels,
-    /// Labels are provided
-    Provided(Vec<String>),
-}
-
-impl fmt::Display for HeaderLabelStrategy {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Self::Provided(_) => "Header Labels Provided",
-                Self::ReadLabels => "Read Header Labels",
-                Self::NoLabels => "No Header Labels",
-            }
-        )
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Default)]
+/// Determines how types for each column are generated.
 pub enum TypesStrategy {
     /// The types are infered from the csv
     Infer,
     /// The types are provided as a vector
     Provided(Vec<ColumnType>),
-    /// All columns have a None type
+    /// All columns have a mixed type
     #[default]
     None,
 }
