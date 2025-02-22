@@ -47,24 +47,36 @@ mod col_tests;
 use super::config::*;
 use super::utils::{ColumnType as CT, TypesStrategy};
 
+const INFERENCE_LIMIT: u32 = 100;
+const I32: u8 = 0b0000_0001;
+const U32: u8 = 0b0000_0010;
+const ISIZE: u8 = 0b0000_0100;
+const USIZE: u8 = 0b0000_1000;
+const F32: u8 = 0b0001_0000;
+const F64: u8 = 0b0010_0000;
+const BOOL: u8 = 0b0100_0000;
+const TEXT: u8 = 0b1000_0000;
+
 /// Wrapper type for [`ColumnType`] and [`TypesStrategy`].
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum ColumnType {
     None,
-    Infer,
+    Infer(bool),
     Type(CT),
 }
 
 struct StrategyIter {
     strat: TypesStrategy,
     idx: usize,
+    try_infer: bool,
 }
 
 impl StrategyIter {
-    fn new(value: TypesStrategy) -> Self {
+    fn new(value: TypesStrategy, try_infer: bool) -> Self {
         Self {
             strat: value,
             idx: 0,
+            try_infer,
         }
     }
 }
@@ -79,7 +91,7 @@ impl Iterator for StrategyIter {
         match &self.strat {
             TypesStrategy::Provided(headers) => headers.get(idx).copied().map(ColumnType::Type),
             TypesStrategy::None => Some(ColumnType::None),
-            TypesStrategy::Infer => Some(ColumnType::Infer),
+            TypesStrategy::Infer => Some(ColumnType::Infer(self.try_infer)),
         }
     }
 }
@@ -126,10 +138,12 @@ impl ColumnSheet {
             .flexible(flexible)
             .from_path(path)?;
 
-        let (mut cols, height) = {
+        let (mut cols, height, types) = {
             let mut cols: Vec<Vec<String>> = Vec::default();
+            let mut types: Vec<(u8, bool)> = Vec::default();
             let mut rows = 0;
             let mut columns = 0;
+            let mut limit = 0;
 
             for (row, record) in rdr.records().enumerate() {
                 let record = record?;
@@ -138,6 +152,23 @@ impl ColumnSheet {
 
                 for (col, record) in record.into_iter().enumerate() {
                     let record = record.to_owned();
+
+                    let prev = types.get(col);
+                    let has_prev = prev.is_some();
+                    let prev = prev.copied().unwrap_or_default();
+                    // Specifically done like this for maniacs who would have
+                    // the first `INFERENCE_LIMIT` rows for a column empty just
+                    // to then have a value in said column.
+                    let col_type = if limit < INFERENCE_LIMIT {
+                        infered_type(prev, &record, &null_string)
+                    } else {
+                        prev
+                    };
+                    if has_prev {
+                        types[col] = col_type;
+                    } else {
+                        types.push(col_type);
+                    }
 
                     match cols.get_mut(col) {
                         Some(col) => col.push(record),
@@ -163,8 +194,11 @@ impl ColumnSheet {
                         }
                     }
                 }
+
+                limit += 1;
             }
-            (cols, rows)
+
+            (cols, rows, types)
         };
 
         //cols.iter_mut()
@@ -191,7 +225,7 @@ impl ColumnSheet {
         cols.resize_with(longest, Default::default);
 
         let columns: Vec<Box<dyn Column>> =
-            Self::create_columns(cols, headers, type_strategy, &null_string);
+            Self::create_columns(cols, headers, type_strategy, (false, types), &null_string);
         let primary = if columns.is_empty() {
             None
         } else {
@@ -212,6 +246,7 @@ impl ColumnSheet {
         cols: Vec<Vec<String>>,
         headers: Vec<Option<String>>,
         type_strategy: TypesStrategy,
+        inferance: (bool, Vec<(u8, bool)>),
         null: &str,
     ) -> Vec<Box<dyn Column>> {
         // Dropping extra unused headers is most likely okay so the less than
@@ -221,12 +256,15 @@ impl ColumnSheet {
             "Column construction assertion failed"
         );
 
-        let strategies = StrategyIter::new(type_strategy);
+        let strategies = StrategyIter::new(type_strategy, inferance.0);
 
         cols.into_iter()
             .zip(headers)
             .zip(strategies)
-            .map(|((col, header), kind)| parse_column(col, header, kind, null))
+            .zip(inferance.1)
+            .map(|(((col, header), kind), inference)| {
+                parse_column(col, header, kind, inference, null)
+            })
             .collect()
     }
 
@@ -672,6 +710,7 @@ impl ColumnSheet {
                 cols,
                 vec![None; len],
                 TypesStrategy::Infer,
+                (true, vec![(0, false); len]),
                 &self.null_string,
             );
 
@@ -814,6 +853,200 @@ impl ColumnSheet {
     }
 }
 
+/// Returns the infered type of `value` and whether `value` is negative.
+fn infered_type(prev: (u8, bool), value: &str, null: &str) -> (u8, bool) {
+    if value.is_empty() || value == null {
+        return prev;
+    }
+
+    match prev.0 {
+        0 => {
+            if let Ok(value) = value.parse::<i32>() {
+                return (I32, value < 0);
+            }
+
+            if value.parse::<u32>().is_ok() {
+                return (U32, false);
+            }
+
+            if let Ok(value) = value.parse::<isize>() {
+                return (ISIZE, value < 0);
+            }
+
+            if value.parse::<usize>().is_ok() {
+                return (USIZE, false);
+            }
+
+            if value.parse::<f32>().is_ok() {
+                return (F32, false);
+            }
+
+            if value.parse::<f64>().is_ok() {
+                return (F64, false);
+            }
+
+            if value.parse::<bool>().is_ok() {
+                return (BOOL, false);
+            }
+
+            (TEXT, false)
+        }
+
+        I32 if prev.1 => {
+            if value.parse::<i32>().is_ok() {
+                return (I32, prev.1);
+            }
+
+            if value.parse::<isize>().is_ok() {
+                return (ISIZE, prev.1);
+            }
+
+            if value.parse::<f32>().is_ok() {
+                return (F32, false);
+            }
+
+            if value.parse::<f64>().is_ok() {
+                return (F64, false);
+            }
+
+            (TEXT, false)
+        }
+
+        I32 => {
+            if let Ok(value) = value.parse::<i32>() {
+                return (I32, prev.1 || value < 0);
+            }
+
+            if value.parse::<u32>().is_ok() {
+                return (U32, false);
+            }
+
+            if let Ok(value) = value.parse::<isize>() {
+                return (ISIZE, prev.1 || value < 0);
+            }
+
+            if value.parse::<usize>().is_ok() {
+                return (USIZE, false);
+            }
+
+            if value.parse::<f32>().is_ok() {
+                return (F32, false);
+            }
+
+            if value.parse::<f64>().is_ok() {
+                return (F64, false);
+            }
+
+            (TEXT, false)
+        }
+
+        U32 => {
+            if value.parse::<u32>().is_ok() {
+                return (U32, false);
+            }
+
+            if let Ok(value) = value.parse::<isize>() {
+                return (ISIZE, value < 0);
+            }
+
+            if value.parse::<usize>().is_ok() {
+                return (USIZE, false);
+            }
+
+            if value.parse::<f32>().is_ok() {
+                return (F32, false);
+            }
+
+            if value.parse::<f64>().is_ok() {
+                return (F64, false);
+            }
+
+            (TEXT, false)
+        }
+
+        ISIZE if prev.1 => {
+            if let Ok(value) = value.parse::<isize>() {
+                return (ISIZE, prev.1 || value < 0);
+            }
+
+            if value.parse::<f32>().is_ok() {
+                return (F32, false);
+            }
+
+            if value.parse::<f64>().is_ok() {
+                return (F64, false);
+            }
+
+            (TEXT, false)
+        }
+
+        ISIZE => {
+            if let Ok(value) = value.parse::<isize>() {
+                return (ISIZE, prev.1 || value < 0);
+            }
+
+            if value.parse::<usize>().is_ok() {
+                return (USIZE, false);
+            }
+
+            if value.parse::<f32>().is_ok() {
+                return (F32, false);
+            }
+
+            if value.parse::<f64>().is_ok() {
+                return (F64, false);
+            }
+
+            (TEXT, false)
+        }
+
+        USIZE => {
+            if value.parse::<usize>().is_ok() {
+                return (USIZE, false);
+            }
+            if value.parse::<f32>().is_ok() {
+                return (F32, false);
+            }
+
+            if value.parse::<f64>().is_ok() {
+                return (F64, false);
+            }
+
+            (TEXT, false)
+        }
+
+        F32 => {
+            if value.parse::<f32>().is_ok() {
+                return (F32, false);
+            }
+
+            if value.parse::<f64>().is_ok() {
+                return (F64, false);
+            }
+
+            (TEXT, false)
+        }
+
+        F64 => {
+            if value.parse::<f64>().is_ok() {
+                return (F64, false);
+            }
+
+            (TEXT, false)
+        }
+
+        BOOL => {
+            if value.parse::<bool>().is_ok() {
+                return (BOOL, false);
+            }
+
+            (TEXT, false)
+        }
+
+        _ => (TEXT, false),
+    }
+}
+
 impl<P: AsRef<Path>> TryFrom<Config<P>> for ColumnSheet {
     type Error = Error;
 
@@ -826,6 +1059,7 @@ fn parse_column(
     col: Vec<String>,
     header: Option<String>,
     strategy: ColumnType,
+    inferance: (u8, bool),
     null: &str,
 ) -> Box<dyn Column> {
     let text = |col: Vec<String>, header: Option<String>| {
@@ -833,60 +1067,123 @@ fn parse_column(
         if let Some(header) = header {
             array.set_header(header);
         }
-        Box::new(array)
+        boxed(array)
     };
 
     match strategy {
         ColumnType::None => text(col, header),
 
-        ColumnType::Infer => {
+        ColumnType::Infer(false) => {
+            match inferance.0 {
+                I32 => {
+                    if let Some(mut array) = ArrayI32::parse_str(&col, null) {
+                        if let Some(header) = header {
+                            array.set_header(header);
+                        }
+                        return boxed(array);
+                    }
+                }
+                U32 => {
+                    if let Some(mut array) = ArrayU32::parse_str(&col, null) {
+                        if let Some(header) = header {
+                            array.set_header(header);
+                        }
+                        return boxed(array);
+                    }
+                }
+                ISIZE => {
+                    if let Some(mut array) = ArrayISize::parse_str(&col, null) {
+                        if let Some(header) = header {
+                            array.set_header(header);
+                        }
+                        return boxed(array);
+                    }
+                }
+                USIZE => {
+                    if let Some(mut array) = ArrayUSize::parse_str(&col, null) {
+                        if let Some(header) = header {
+                            array.set_header(header);
+                        }
+                        return boxed(array);
+                    }
+                }
+                BOOL => {
+                    if let Some(mut array) = ArrayBool::parse_str(&col, null) {
+                        if let Some(header) = header {
+                            array.set_header(header);
+                        }
+                        return boxed(array);
+                    }
+                }
+                F32 => {
+                    if let Some(mut array) = ArrayF32::parse_str(&col, null) {
+                        if let Some(header) = header {
+                            array.set_header(header);
+                        }
+                        return boxed(array);
+                    }
+                }
+                F64 => {
+                    if let Some(mut array) = ArrayF64::parse_str(&col, null) {
+                        if let Some(header) = header {
+                            array.set_header(header);
+                        }
+                        return boxed(array);
+                    }
+                }
+                _ => return text(col, header),
+            };
+
+            text(col, header)
+        }
+        ColumnType::Infer(true) => {
             if let Some(mut array) = ArrayI32::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
-                return Box::new(array);
+                return boxed(array);
             };
 
             if let Some(mut array) = ArrayU32::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
-                return Box::new(array);
+                return boxed(array);
             };
 
             if let Some(mut array) = ArrayISize::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
-                return Box::new(array);
+                return boxed(array);
             };
 
             if let Some(mut array) = ArrayUSize::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
-                return Box::new(array);
+                return boxed(array);
             };
 
             if let Some(mut array) = ArrayBool::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
-                return Box::new(array);
+                return boxed(array);
             };
 
             if let Some(mut array) = ArrayF32::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
-                return Box::new(array);
+                return boxed(array);
             };
 
             if let Some(mut array) = ArrayF64::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
-                return Box::new(array);
+                return boxed(array);
             };
 
             text(col, header)
@@ -899,14 +1196,14 @@ fn parse_column(
                 if let Some(header) = header {
                     array.set_header(header);
                 }
-                return Box::new(array);
+                return boxed(array);
             };
 
             if let Some(mut array) = ArrayU32::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
-                return Box::new(array);
+                return boxed(array);
             };
 
             text(col, header)
@@ -917,14 +1214,14 @@ fn parse_column(
                 if let Some(header) = header {
                     array.set_header(header);
                 }
-                return Box::new(array);
+                return boxed(array);
             };
 
             if let Some(mut array) = ArrayUSize::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
-                return Box::new(array);
+                return boxed(array);
             };
 
             text(col, header)
@@ -935,14 +1232,14 @@ fn parse_column(
                 if let Some(header) = header {
                     array.set_header(header);
                 }
-                return Box::new(array);
+                return boxed(array);
             };
 
             if let Some(mut array) = ArrayF64::parse_str(&col, null) {
                 if let Some(header) = header {
                     array.set_header(header);
                 }
-                return Box::new(array);
+                return boxed(array);
             };
 
             text(col, header)
@@ -953,12 +1250,16 @@ fn parse_column(
                 if let Some(header) = header {
                     array.set_header(header);
                 }
-                return Box::new(array);
+                return boxed(array);
             };
 
             text(col, header)
         }
     }
+}
+
+fn boxed<T: Column>(value: T) -> Box<dyn Column> {
+    Box::new(value)
 }
 
 mod error {
