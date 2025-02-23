@@ -10,7 +10,7 @@ mod init {
     pub use records::*;
     pub use types::*;
 
-    const DURATION: u64 = 120;
+    const DURATION: u64 = 300;
 
     /// Lightweight CSV meausrement 1
     /// Record num: 6
@@ -244,12 +244,12 @@ mod init {
 
             group.measurement_time(Duration::from_secs(DURATION));
 
-            group.bench_function(BenchmarkId::new("Row Sheet", ""), |bench| {
-                bench.iter(|| Sheet::with_config(builder.clone()));
-            });
-
             group.bench_function(BenchmarkId::new("Column Sheet", ""), |bench| {
                 bench.iter(|| ColumnSheet::with_config(builder.clone()));
+            });
+
+            group.bench_function(BenchmarkId::new("Row Sheet", ""), |bench| {
+                bench.iter(|| Sheet::with_config(builder.clone()));
             });
         }
 
@@ -266,12 +266,12 @@ mod init {
 
             group.measurement_time(Duration::from_secs(DURATION));
 
-            group.bench_function(BenchmarkId::new("Row Sheet", ""), |bench| {
-                bench.iter(|| Sheet::with_config(builder.clone()));
-            });
-
             group.bench_function(BenchmarkId::new("Column Sheet", ""), |bench| {
                 bench.iter(|| ColumnSheet::with_config(builder.clone()));
+            });
+
+            group.bench_function(BenchmarkId::new("Row Sheet", ""), |bench| {
+                bench.iter(|| Sheet::with_config(builder.clone()));
             });
         }
 
@@ -288,12 +288,12 @@ mod init {
 
             group.measurement_time(Duration::from_secs(DURATION));
 
-            group.bench_function(BenchmarkId::new("Row Sheet", ""), |bench| {
-                bench.iter(|| Sheet::with_config(builder.clone()));
-            });
-
             group.bench_function(BenchmarkId::new("Column Sheet", ""), |bench| {
                 bench.iter(|| ColumnSheet::with_config(builder.clone()));
+            });
+
+            group.bench_function(BenchmarkId::new("Row Sheet", ""), |bench| {
+                bench.iter(|| Sheet::with_config(builder.clone()));
             });
         }
 
@@ -310,12 +310,12 @@ mod init {
 
             group.measurement_time(Duration::from_secs(DURATION));
 
-            group.bench_function(BenchmarkId::new("Row Sheet", ""), |bench| {
-                bench.iter(|| Sheet::with_config(builder.clone()));
-            });
-
             group.bench_function(BenchmarkId::new("Column Sheet", ""), |bench| {
                 bench.iter(|| ColumnSheet::with_config(builder.clone()));
+            });
+
+            group.bench_function(BenchmarkId::new("Row Sheet", ""), |bench| {
+                bench.iter(|| Sheet::with_config(builder.clone()));
             });
         }
     }
@@ -425,4 +425,5 @@ criterion_group! {
 }
 
 //criterion_main!(initialization, init_fields, init_records, init_types);
-criterion_main!(init_fields, init_records, init_types);
+//criterion_main!(init_fields, init_records, init_types);
+criterion_main!(init_records);
