@@ -12,6 +12,9 @@ The project is split into 2 parts. The core functionality and the GUI applicatio
 
 ## Planned Features/Goals
 
+## MSRV
+The current minimum supported rust version is 1.65.0.
+
 I plan to support the most common dataset operations, models and data formats. I’ve thus grouped the planned features accordingly.
 
 ### Supported File Formats
