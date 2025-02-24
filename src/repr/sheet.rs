@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    path::PathBuf,
+    path::Path,
     slice::{Iter, IterMut},
 };
 
@@ -10,15 +10,14 @@ use crate::models::{
     bar::{Bar, BarChart},
     line::{Line, LineGraph},
     stacked_bar::{StackedBar, StackedBarChart},
-    ScaleKind,
+    Point, Scale, ScaleKind,
 };
-use crate::models::{Point, Scale};
 
+use super::config::*;
 pub mod error;
 pub use error::*;
 pub mod utils;
 pub use utils::*;
-pub mod builders;
 mod tests;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -419,23 +418,35 @@ impl Sheet {
         }
     }
 
-    /// Create a new sheet given the path to a csv file
-    pub fn new(
-        path: PathBuf,
-        primary: usize,
-        label_strategy: HeaderLabelStrategy,
-        type_strategy: HeaderTypesStrategy,
-        trim: bool,
-        flexible: bool,
-        delimiter: u8,
-    ) -> Result<Self> {
+    /// Creates a new [`Sheet`] with the provided `path`.
+    ///
+    /// The default [`Config`] is used.
+    pub fn new<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let builder = Config::new(path);
+
+        Self::with_config(builder)
+    }
+
+    /// Create a new [`Sheet`] given a [`Config`].
+    pub fn with_config<P: AsRef<Path>>(config: Config<P>) -> Result<Self> {
+        let Config {
+            path,
+            flexible,
+            trim,
+            delimiter,
+            label_strategy,
+            type_strategy,
+            primary,
+            ..
+        } = config;
+
         let mut counter: usize = 0;
         let mut longest_row = 0;
 
         let has_headers = match label_strategy {
-            HeaderLabelStrategy::ReadLabels => true,
-            HeaderLabelStrategy::NoLabels => false,
-            HeaderLabelStrategy::Provided(_) => false,
+            HeaderStrategy::ReadLabels => true,
+            HeaderStrategy::NoLabels => false,
+            HeaderStrategy::Provided(_) => false,
         };
 
         let trim = {
@@ -445,6 +456,7 @@ impl Sheet {
                 Trim::None
             }
         };
+
         let mut rdr = csv::ReaderBuilder::new()
             .has_headers(has_headers)
             .trim(trim)
@@ -473,21 +485,15 @@ impl Sheet {
         }
 
         let types = match &type_strategy {
-            HeaderTypesStrategy::Provided(ct) => Sheet::balance_vector(ct.to_owned(), longest_row),
-            HeaderTypesStrategy::Infer => {
-                Sheet::balance_vector(Vec::<ColumnType>::new(), longest_row)
-            }
-            HeaderTypesStrategy::None => {
-                Sheet::balance_vector(Vec::<ColumnType>::new(), longest_row)
-            }
+            TypesStrategy::Provided(ct) => Sheet::balance_vector(ct.to_owned(), longest_row),
+            TypesStrategy::Infer => Sheet::balance_vector(Vec::<ColumnType>::new(), longest_row),
+            TypesStrategy::None => Sheet::balance_vector(Vec::<ColumnType>::new(), longest_row),
         };
 
         let labels = match &label_strategy {
-            HeaderLabelStrategy::Provided(ch) => Sheet::balance_vector(ch.to_owned(), longest_row),
-            HeaderLabelStrategy::NoLabels => {
-                Sheet::balance_vector(Vec::<String>::new(), longest_row)
-            }
-            HeaderLabelStrategy::ReadLabels => {
+            HeaderStrategy::Provided(ch) => Sheet::balance_vector(ch.to_owned(), longest_row),
+            HeaderStrategy::NoLabels => Sheet::balance_vector(Vec::<String>::new(), longest_row),
+            HeaderStrategy::ReadLabels => {
                 let labels: Vec<String> = rdr
                     .headers()?
                     .clone()
@@ -511,7 +517,7 @@ impl Sheet {
             primary_key: primary,
         };
 
-        if type_strategy == HeaderTypesStrategy::Infer {
+        if type_strategy == TypesStrategy::Infer {
             Sheet::infer_col_kinds(&mut sh, longest_row);
         }
 
@@ -737,7 +743,7 @@ impl Sheet {
     ///
     /// uniform_type: Whether every non-zeroth column has the same type.
     /// types are lost if false
-    pub fn transpose(sheet: &Sheet, initial_header: Option<String>) -> Result<Self> {
+    fn transpose(sheet: &Sheet, initial_header: Option<String>) -> Result<Self> {
         Sheet::validate(sheet)?;
 
         let width = sheet.headers.len();
@@ -1269,5 +1275,13 @@ impl Sheet {
             }
             StackedBarChartAxisLabelStrategy::Provided { x, y } => Ok(stacked.x_axis(x).y_axis(y)),
         }
+    }
+}
+
+impl<P: AsRef<Path>> TryFrom<Config<P>> for Sheet {
+    type Error = Error;
+
+    fn try_from(value: Config<P>) -> Result<Self> {
+        Self::with_config(value)
     }
 }
